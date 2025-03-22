@@ -14,10 +14,16 @@ A Python library for working with Encoded Archival Description (EAD) XML documen
 
 ## Installation
 
-Install EADPy using pip:
+Install EADPy using `pip`:
 
 ```bash
 pip install eadpy
+```
+
+Install using `uv`:
+
+```bash
+uv tool install eadpy
 ```
 
 ## Usage
