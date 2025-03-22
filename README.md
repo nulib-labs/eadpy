@@ -8,7 +8,7 @@ A Python library for working with Encoded Archival Description (EAD) XML documen
 ## Features
 
 - Parse and manipulate EAD XML documents
-- Convert EAD to various formats (JSON, CSV, etc.)
+- Convert EAD to various formats (JSON, CSV)
 - Validate EAD documents against schemas
 - Tools for batch processing of EAD files
 
@@ -22,12 +22,37 @@ pip install eadpy
 
 ## Usage
 
+### Parse an EAD file
+
 ```python
 from eadpy import Ead
 
-# Load an EAD file and process it
+# Load an EAD file and parse it
 ead = Ead("path/to/finding_aid.xml")
+```
+
+### Export to JSON chunks
+
+```python
+# Create chunks for embedding or display
 ead.create_and_save_chunks("path/to/output.json")
+```
+
+### Export to CSV
+
+```python
+# Create a flattened CSV representation of the hierarchy
+ead.create_and_save_csv("path/to/output.csv")
+```
+
+### Command line usage
+
+```bash
+# Export to JSON (default)
+eadpy path/to/finding_aid.xml output.json
+
+# Export to CSV
+eadpy path/to/finding_aid.xml output.csv
 ```
 
 ## Development
@@ -39,7 +64,7 @@ EADPy uses [uv](https://github.com/astral-sh/uv) for dependency management and v
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/eadpy.git
+git clone https://github.com/nulib-labs/eadpy
 cd eadpy
 ```
 

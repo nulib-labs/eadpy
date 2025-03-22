@@ -1,5 +1,6 @@
 import os
 import json
+import csv
 import tempfile
 import pytest
 from lxml import etree
@@ -251,3 +252,85 @@ def test_invalid_xml_content():
     finally:
         # Clean up
         os.unlink(temp_file.name)
+
+def test_create_csv_data(ead_instance):
+    """Test creation of CSV data"""
+    csv_data = ead_instance.create_csv_data()
+    assert isinstance(csv_data, list)
+    
+    # Test that CSV data has the right structure
+    if len(csv_data) > 0:
+        row = csv_data[0]
+        assert "id" in row
+        assert "title" in row
+        assert "level" in row
+        assert "path" in row
+        assert "depth" in row
+        assert "date" in row
+        assert "has_online_content" in row
+        assert isinstance(row["depth"], int)
+
+def test_save_csv_data(ead_instance):
+    """Test saving CSV data to a file"""
+    csv_data = [
+        {"id": "test123", "title": "Test", "level": "item", "depth": 1},
+        {"id": "test456", "title": "Another Test", "level": "file", "depth": 2}
+    ]
+    
+    # Create temp file for testing
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+        output_path = temp_file.name
+    
+    # Save CSV data to file
+    ead_instance.save_csv_data(csv_data, output_path)
+    
+    # Verify file exists and contains correct data
+    assert os.path.exists(output_path)
+    with open(output_path, 'r', newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+        assert len(rows) == 2
+        assert rows[0]["id"] == "test123"
+        assert rows[1]["id"] == "test456"
+    
+    # Clean up
+    os.unlink(output_path)
+
+def test_save_empty_csv_data(ead_instance):
+    """Test error handling when saving empty CSV data"""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+        output_path = temp_file.name
+    
+    # Try to save empty CSV data
+    with pytest.raises(ValueError) as excinfo:
+        ead_instance.save_csv_data([], output_path)
+    
+    assert "No CSV data to save" in str(excinfo.value)
+    
+    # Clean up
+    os.unlink(output_path)
+
+def test_create_and_save_csv(ead_instance):
+    """Test the combined create and save CSV functionality"""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+        output_path = temp_file.name
+    
+    # Create and save CSV
+    created_csv_data = ead_instance.create_and_save_csv(output_path)
+    
+    # Verify file exists
+    assert os.path.exists(output_path)
+    
+    # Verify data was written correctly
+    with open(output_path, 'r', newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+        assert len(rows) == len(created_csv_data)
+        
+        if len(rows) > 0:
+            # Check first row keys match
+            for key in created_csv_data[0]:
+                assert key in reader.fieldnames
+    
+    # Clean up
+    os.unlink(output_path)

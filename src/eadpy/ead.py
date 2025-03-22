@@ -2,6 +2,7 @@ import hashlib
 import time
 import os
 from lxml import etree
+import csv
 
 class Ead:
     NAME_ELEMENTS = ["corpname", "famname", "name", "persname"]
@@ -254,6 +255,126 @@ class Ead:
         chunks = self.create_item_chunks()
         self.save_chunks_to_json(chunks, output_file)
         return chunks
+    
+    def create_csv_data(self):
+        """
+        Create flattened data suitable for CSV export.
+        Returns a list of dictionaries, each representing a row in the CSV.
+        """
+        csv_data = []
+        
+        def process_component(component, ancestors=None, depth=0):
+            if ancestors is None:
+                ancestors = []
+                
+            # Create a row for this component
+            row = {
+                "id": component.get("id", ""),
+                "ref_id": component.get("ref_id", ""),
+                "parent_id": component.get("parent_id", ""),
+                "level": component.get("level", ""),
+                "depth": depth,
+                "title": component.get("title", ""),
+                "normalized_title": component.get("normalized_title", ""),
+                "date": component.get("normalized_date", ""),
+                "unitid": component.get("unitid", ""),
+                "has_online_content": "Yes" if component.get("has_online_content") else "No",
+                "path": " > ".join([(a.get("title") or "") for a in ancestors] + [(component.get("title") or "")])
+            }
+            
+            # Add extent information
+            if component.get("extent"):
+                row["extent"] = ", ".join([(item or "") for item in component["extent"]])
+            else:
+                row["extent"] = ""
+                
+            # Add creators information
+            if component.get("creators"):
+                creators = []
+                for creator in component["creators"]:
+                    if creator.get("name"):
+                        creators.append(f"{creator['name']} ({creator.get('type', '')})")
+                row["creators"] = "; ".join(creators)
+            else:
+                row["creators"] = ""
+                
+            # Add container information if available
+            if component.get("containers"):
+                containers = []
+                for container in component["containers"]:
+                    if container.get("type") and container.get("value"):
+                        containers.append(f"{container['type']}: {container['value']}")
+                row["containers"] = "; ".join(containers)
+            else:
+                row["containers"] = ""
+                
+            # Add notes
+            if component.get("notes"):
+                notes_text = []
+                for note_type, notes in component["notes"].items():
+                    if isinstance(notes, list):
+                        for note in notes:
+                            if isinstance(note, dict) and "content" in note:
+                                content_items = [(item or "") for item in note["content"]]
+                                notes_text.append(f"{note_type.upper()}: {' '.join(content_items)}")
+                            else:
+                                notes_text.append(f"{note_type.upper()}: {str(note or '')}")
+                row["notes"] = " | ".join(notes_text)
+            else:
+                row["notes"] = ""
+                
+            # Add subjects
+            if component.get("access_subjects"):
+                row["subjects"] = ", ".join([(item or "") for item in component["access_subjects"]])
+            else:
+                row["subjects"] = ""
+                
+            # Add row to results
+            csv_data.append(row)
+            
+            # Process children recursively
+            current_ancestors = ancestors + [component]
+            if "components" in component:
+                for child in component["components"]:
+                    process_component(child, current_ancestors, depth + 1)
+        
+        # Start with the collection (self.data is the parsed EAD)
+        process_component(self.data)
+        
+        return csv_data
+    
+    def save_csv_data(self, csv_data, output_file):
+        """
+        Save CSV data to a file.
+        
+        Parameters:
+        csv_data (list): List of dictionaries representing CSV rows
+        output_file (str): Path to the output CSV file
+        """
+        if not csv_data:
+            raise ValueError("No CSV data to save")
+            
+        # Get fieldnames from the first row
+        fieldnames = list(csv_data[0].keys())
+        
+        with open(output_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(csv_data)
+    
+    def create_and_save_csv(self, output_file):
+        """
+        Create flattened CSV data and save it to a file.
+        
+        Parameters:
+        output_file (str): Path to the output CSV file
+        
+        Returns:
+        list: The CSV data that was created and saved
+        """
+        csv_data = self.create_csv_data()
+        self.save_csv_data(csv_data, output_file)
+        return csv_data
     
     def _remove_namespaces(self, tree):
         """
