@@ -1,6 +1,6 @@
 [project]
 name = "eadpy"
-version = "0.1.1"
+version = "0.1.2"
 description = "A Python library for working with Encoded Archival Description (EAD) XML files"
 readme = "README.md"
 authors = [

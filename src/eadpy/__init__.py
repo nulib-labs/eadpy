@@ -4,5 +4,5 @@ EADPy - A Python library for parsing EAD (Encoded Archival Description) XML file
 
 from eadpy.ead import Ead
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"
 __all__ = ["Ead"]

@@ -51,15 +51,63 @@ ead.create_and_save_chunks("path/to/output.json")
 ead.create_and_save_csv("path/to/output.csv")
 ```
 
-### Command line usage
+## Command-line Interface
+
+EADPy supports processing multiple EAD XML files at once using the command-line interface.
+
+### Processing a single file
 
 ```bash
 # Export to JSON (default)
-eadpy path/to/finding_aid.xml output.json
+eadpy file path/to/finding_aid.xml -o output.json
 
 # Export to CSV
-eadpy path/to/finding_aid.xml output.csv
+eadpy file path/to/finding_aid.xml -o output.csv -f csv
+
+# Use verbose mode for detailed output
+eadpy file path/to/finding_aid.xml -v
 ```
+
+### Batch processing a directory of files
+
+```bash
+# Process all XML files in a directory and export to JSON
+eadpy dir path/to/ead_directory
+
+# Export to CSV
+eadpy dir path/to/ead_directory -f csv
+
+# Specify an output directory
+eadpy dir path/to/ead_directory -o path/to/output_directory
+
+# Process subdirectories recursively
+eadpy dir path/to/ead_directory -r
+
+# Use verbose mode for detailed output
+eadpy dir path/to/ead_directory -v
+```
+
+### Command-line options
+
+#### Global options
+
+- `--version`: Show the version number and exit
+- `--help`: Show help message and exit
+
+#### File command options
+
+- `input`: Path to the EAD XML file (required)
+- `-o, --output`: Path to the output file
+- `-f, --format`: Output format ('json' or 'csv')
+- `-v, --verbose`: Print detailed information
+
+#### Directory command options
+
+- `input_dir`: Path to the directory containing EAD XML files (required)
+- `-o, --output-dir`: Directory for output files
+- `-f, --format`: Output format ('json' or 'csv', default: 'json')
+- `-r, --recursive`: Process subdirectories recursively
+- `-v, --verbose`: Print detailed information
 
 ## Development
 
