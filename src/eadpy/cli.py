@@ -7,21 +7,28 @@ import argparse
 import pathlib
 import glob
 from typing import List, Optional, Tuple
-from eadpy import Ead, __version__
+from eadpy import from_path, __version__
 
 def process_file(ead_file: str, output_file: Optional[str] = None, 
                 format_type: Optional[str] = None, verbose: bool = False) -> Tuple[bool, str]:
     """
     Process a single EAD XML file.
     
-    Parameters:
-    ead_file (str): Path to the EAD XML file
-    output_file (str, optional): Path to the output file
-    format_type (str, optional): Output format ('json' or 'csv')
-    verbose (bool): Whether to print detailed information
+    Parameters
+    ----------
+    ead_file : str
+        Path to the EAD XML file
+    output_file : str, optional
+        Path to the output file
+    format_type : str, optional
+        Output format ('json' or 'csv')
+    verbose : bool
+        Whether to print detailed information
     
-    Returns:
-    Tuple[bool, str]: (Success status, Output file path or error message)
+    Returns
+    -------
+    Tuple[bool, str]
+        Success status, Output file path or error message
     """
     try:
         if not os.path.exists(ead_file):
@@ -46,7 +53,7 @@ def process_file(ead_file: str, output_file: Optional[str] = None,
         if verbose:
             print(f"Parsing EAD file: {ead_file}")
         
-        ead = Ead(ead_file)
+        ead = from_path(ead_file)
         
         if format_type == 'csv':
             ead.create_and_save_csv(output_file)
@@ -67,15 +74,23 @@ def process_directory(directory: str, output_dir: Optional[str] = None,
     """
     Process all XML files in a directory.
     
-    Parameters:
-    directory (str): Path to the directory containing EAD XML files
-    output_dir (str, optional): Directory for output files
-    format_type (str): Output format ('json' or 'csv')
-    recursive (bool): Whether to process subdirectories recursively
-    verbose (bool): Whether to print detailed information
+    Parameters
+    ----------
+    directory : str
+        Path to the directory containing EAD XML files
+    output_dir : str, optional
+        Directory for output files
+    format_type : str
+        Output format ('json' or 'csv')
+    recursive : bool
+        Whether to process subdirectories recursively
+    verbose : bool
+        Whether to print detailed information
     
-    Returns:
-    Tuple[int, int, List[str]]: (Success count, Failure count, List of errors)
+    Returns
+    -------
+    Tuple[int, int, List[str]]
+        Success count, Failure count, List of errors
     """
     if not os.path.exists(directory):
         return 0, 1, [f"Directory '{directory}' does not exist."]
@@ -127,7 +142,18 @@ def process_directory(directory: str, output_dir: Optional[str] = None,
     return success_count, failure_count, errors
 
 def main():
-    """Main entry point for the EADPy command-line interface."""
+    """
+    Main entry point for the EADPy command-line interface.
+    
+    Provides command-line functionality for processing EAD XML files,
+    either individually or in directories. Supports output in both
+    JSON and CSV formats.
+    
+    Returns
+    -------
+    None
+        Terminates with exit code 0 on success, 1 on failure.
+    """
     parser = argparse.ArgumentParser(
         description="EADPy - Process Encoded Archival Description (EAD) XML files",
         epilog="For more information, visit: https://github.com/nulib-labs/eadpy"

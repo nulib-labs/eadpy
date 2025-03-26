@@ -7,7 +7,8 @@ import pytest
 from pathlib import Path
 
 from eadpy.cli import process_file, process_directory, main
-from eadpy import Ead
+# Import the top-level functions from eadpy to mock them in tests
+from eadpy import from_path, EAD
 
 @pytest.fixture
 def sample_xml_path():

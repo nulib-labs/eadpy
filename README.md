@@ -9,7 +9,6 @@ A Python library for working with Encoded Archival Description (EAD) XML documen
 
 - Parse and manipulate EAD XML documents
 - Convert EAD to various formats (JSON, CSV)
-- Validate EAD documents against schemas
 - Tools for batch processing of EAD files
 
 ## Installation
@@ -26,82 +25,187 @@ Install using `uv`:
 uv tool install eadpy
 ```
 
-## Usage
+EADPy requires Python 3.8 or higher.
 
-### Parse an EAD file
+## Command-line Usage
+
+The following command will process an EAD XML file and export it to JSON format:
+
+```bash
+eadpy file path/to/finding_aid.xml -o output.json
+```
+
+To export to CSV format instead:
+
+```bash
+eadpy file path/to/finding_aid.xml -o output.csv -f csv
+```
+
+For batch processing of multiple EAD XML files in a directory:
+
+```bash
+eadpy dir path/to/ead_directory -o path/to/output_directory
+```
+
+To process subdirectories recursively:
+
+```bash
+eadpy dir path/to/ead_directory -r -o path/to/output_directory
+```
+
+Use the verbose flag for detailed information during processing:
+
+```bash
+eadpy file path/to/finding_aid.xml -v
+```
+
+Run the following to view all available options:
+
+```bash
+eadpy --help
+```
+
+## Python Usage
+
+EADPy provides multiple ways to create an `EAD` instance depending on your source data:
 
 ```python
-from eadpy import Ead
+import eadpy
 
-# Load an EAD file and parse it
-ead = Ead("path/to/finding_aid.xml")
+# Load an EAD file from a file path
+ead = eadpy.from_path("path/to/finding_aid.xml")
+
+# Create an EAD instance from an XML string
+xml_string = """<?xml version="1.0" encoding="UTF-8"?>
+<ead xmlns="urn:isbn:1-931666-22-9">
+    <!-- EAD content here -->
+</ead>"""
+ead = eadpy.from_string(xml_string)
+
+# Create an EAD instance from bytes
+from eadpy import from_bytes
+with open("path/to/finding_aid.xml", "rb") as f:
+    xml_bytes = f.read()
+ead = from_bytes(xml_bytes)
+
+# Create an EAD instance from a file-like object
+from eadpy import from_file
+with open("path/to/finding_aid.xml", "r") as f:
+    ead = from_file(f)
+
+# Also works with StringIO or BytesIO objects
+from io import StringIO, BytesIO
+from eadpy import from_file, from_string, from_bytes
+
+string_io = StringIO(xml_string)
+ead = from_file(string_io)
+
+bytes_io = BytesIO(xml_bytes)
+ead = from_file(bytes_io)
+```
+
+### Class-Based API Style
+
+```python
+from eadpy import EAD
+
+# Load an EAD file from a file path
+ead = EAD.from_path("path/to/finding_aid.xml")
+
+# Create an EAD instance from an XML string
+ead = EAD.from_string(xml_string)
+
+# Create an EAD instance from bytes
+with open("path/to/finding_aid.xml", "rb") as f:
+    xml_bytes = f.read()
+ead = EAD.from_bytes(xml_bytes)
+
+# Create an EAD instance from a file-like object
+with open("path/to/finding_aid.xml", "r") as f:
+    ead = EAD.from_file(f)
 ```
 
 ### Export to JSON chunks
 
+JSON chunks are useful for embedding or display in applications:
+
 ```python
-# Create chunks for embedding or display
-ead.create_and_save_chunks("path/to/output.json")
+# Create chunks and save them to a file
+chunks = ead.create_and_save_chunks("output.json")
+
+# Or create chunks without saving
+chunks = ead.create_item_chunks()
+
+# Then save them separately if needed
+ead.save_chunks_to_json(chunks, "output.json")
 ```
 
 ### Export to CSV
 
+CSV export is useful for tabular analysis:
+
 ```python
-# Create a flattened CSV representation of the hierarchy
-ead.create_and_save_csv("path/to/output.csv")
+# Create CSV data and save it to a file
+csv_data = ead.create_and_save_csv("output.csv")
+
+# Or create CSV data without saving
+csv_data = ead.create_csv_data()
+
+# Then save it separately if needed
+ead.save_csv_data(csv_data, "output.csv")
 ```
 
-## Command-line Interface
+## API Reference
 
-EADPy supports processing multiple EAD XML files at once using the command-line interface.
+### Package Level Functions 
 
-### Processing a single file
+- **`from_path(file_path: str) -> EAD`**: Creates an EAD instance from a file path. Validates that the file exists, is not a directory, and is readable.
 
-```bash
-# Export to JSON (default)
-eadpy file path/to/finding_aid.xml -o output.json
+- **`from_string(xml_string: str, encoding: str = 'utf-8') -> EAD`**: Creates an EAD instance from an XML string. Handles encoding the string to bytes for proper XML parsing.
 
-# Export to CSV
-eadpy file path/to/finding_aid.xml -o output.csv -f csv
+- **`from_bytes(xml_bytes: bytes) -> EAD`**: Creates an EAD instance from XML bytes. Useful when working with binary data from HTTP responses or other sources.
 
-# Use verbose mode for detailed output
-eadpy file path/to/finding_aid.xml -v
-```
+- **`from_file(file_like_object) -> EAD`**: Creates an EAD instance from a file-like object with a `read()` method. Works with both text-based (StringIO) and binary (BytesIO) file objects.
 
-### Batch processing a directory of files
+### Class Methods (Object Creation)
 
-```bash
-# Process all XML files in a directory and export to JSON
-eadpy dir path/to/ead_directory
+- **`EAD.from_path(file_path: str) -> EAD`**: Creates an EAD instance from a file path. Validates that the file exists, is not a directory, and is readable.
 
-# Export to CSV
-eadpy dir path/to/ead_directory -f csv
+- **`EAD.from_string(xml_string: str, encoding: str = 'utf-8') -> EAD`**: Creates an EAD instance from an XML string. Handles encoding the string to bytes for proper XML parsing.
 
-# Specify an output directory
-eadpy dir path/to/ead_directory -o path/to/output_directory
+- **`EAD.from_bytes(xml_bytes: bytes) -> EAD`**: Creates an EAD instance from XML bytes. Useful when working with binary data from HTTP responses or other sources.
 
-# Process subdirectories recursively
-eadpy dir path/to/ead_directory -r
+- **`EAD.from_file(file_like_object) -> EAD`**: Creates an EAD instance from a file-like object with a `read()` method. Works with both text-based (StringIO) and binary (BytesIO) file objects.
 
-# Use verbose mode for detailed output
-eadpy dir path/to/ead_directory -v
-```
+### Instance Methods (Data Export)
 
-### Command-line options
+- **`create_item_chunks() -> list`**: Creates item-focused chunks that include relevant information from their parent hierarchy. Returns a list of dictionaries, each containing a text representation and metadata for each item.
 
-#### Global options
+- **`save_chunks_to_json(chunks: list, output_file: str) -> None`**: Saves chunks to a JSON file. Takes a list of chunks and an output file path.
+
+- **`create_and_save_chunks(output_file: str) -> list`**: Creates item-focused chunks and saves them to a JSON file. Returns the chunks that were created and saved.
+
+- **`create_csv_data() -> list`**: Creates a flattened hierarchy representation suitable for CSV export. Returns a list of dictionaries, each representing a row in the CSV.
+
+- **`save_csv_data(csv_data: list, output_file: str) -> None`**: Saves CSV data to a file. Takes a list of dictionaries and an output file path.
+
+- **`create_and_save_csv(output_file: str) -> list`**: Creates flattened CSV data and saves it to a file. Returns the CSV data that was created and saved.
+
+## Command-line Reference
+
+### Global options
 
 - `--version`: Show the version number and exit
 - `--help`: Show help message and exit
 
-#### File command options
+### File command options
 
 - `input`: Path to the EAD XML file (required)
 - `-o, --output`: Path to the output file
 - `-f, --format`: Output format ('json' or 'csv')
 - `-v, --verbose`: Print detailed information
 
-#### Directory command options
+### Directory command options
 
 - `input_dir`: Path to the directory containing EAD XML files (required)
 - `-o, --output-dir`: Directory for output files
@@ -142,7 +246,6 @@ uv pip install -e ".[dev]"
 ```bash
 pytest
 ```
-
 
 ## Contributing
 

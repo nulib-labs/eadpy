@@ -1,10 +1,12 @@
+import io
 import os
 import json
 import csv
 import tempfile
 import pytest
 from lxml import etree
-from eadpy.ead import Ead
+from eadpy.ead import EAD
+import eadpy  # Import the package for testing package-level functions
 
 @pytest.fixture
 def sample_xml_path():
@@ -12,7 +14,8 @@ def sample_xml_path():
 
 @pytest.fixture
 def ead_instance(sample_xml_path):
-    return Ead(sample_xml_path)
+    # Use the new from_path class method instead of the constructor
+    return EAD.from_path(sample_xml_path)
 
 @pytest.fixture
 def empty_xml():
@@ -39,10 +42,85 @@ def empty_xml():
     # Cleanup
     os.unlink(temp_file.name)
 
+# Test the new package-level API functions
+def test_package_level_from_path(sample_xml_path):
+    """Test the package-level from_path function"""
+    ead = eadpy.from_path(sample_xml_path)
+    assert ead is not None
+    assert isinstance(ead, EAD)
+    assert ead.data is not None
+    assert "level" in ead.data
+    assert ead.data["level"] == "collection"
+
+def test_package_level_from_string():
+    """Test the package-level from_string function"""
+    xml_string = """<?xml version="1.0" encoding="UTF-8"?>
+    <ead xmlns="urn:isbn:1-931666-22-9">
+        <eadheader>
+            <eadid>test123</eadid>
+        </eadheader>
+        <archdesc level="collection">
+            <did>
+                <unittitle>Test Collection</unittitle>
+            </did>
+            <dsc></dsc>
+        </archdesc>
+    </ead>"""
+    
+    ead = eadpy.from_string(xml_string)
+    assert ead is not None
+    assert isinstance(ead, EAD)
+    assert ead.data["id"] == "test123"
+    assert ead.data["title"] == "Test Collection"
+
+def test_package_level_from_bytes():
+    """Test the package-level from_bytes function"""
+    xml_string = """<?xml version="1.0" encoding="UTF-8"?>
+    <ead xmlns="urn:isbn:1-931666-22-9">
+        <eadheader>
+            <eadid>test456</eadid>
+        </eadheader>
+        <archdesc level="collection">
+            <did>
+                <unittitle>Bytes Test Collection</unittitle>
+            </did>
+            <dsc></dsc>
+        </archdesc>
+    </ead>"""
+    
+    xml_bytes = xml_string.encode('utf-8')
+    ead = eadpy.from_bytes(xml_bytes)
+    assert ead is not None
+    assert isinstance(ead, EAD)
+    assert ead.data["id"] == "test456"
+    assert ead.data["title"] == "Bytes Test Collection"
+
+def test_package_level_from_file():
+    """Test the package-level from_file function"""
+    xml_string = """<?xml version="1.0" encoding="UTF-8"?>
+    <ead xmlns="urn:isbn:1-931666-22-9">
+        <eadheader>
+            <eadid>test789</eadid>
+        </eadheader>
+        <archdesc level="collection">
+            <did>
+                <unittitle>File Test Collection</unittitle>
+            </did>
+            <dsc></dsc>
+        </archdesc>
+    </ead>"""
+    
+    file_like = io.StringIO(xml_string)
+    ead = eadpy.from_file(file_like)
+    assert ead is not None
+    assert isinstance(ead, EAD)
+    assert ead.data["id"] == "test789"
+    assert ead.data["title"] == "File Test Collection"
+
 def test_initialization_and_parsing(ead_instance):
-    """Test that Ead object initializes and parses correctly"""
+    """Test that EAD object initializes and parses correctly"""
     assert ead_instance is not None
-    assert ead_instance.file_path is not None
+    # Check that the instance has data
     assert ead_instance.data is not None
     assert isinstance(ead_instance.data, dict)
     assert "level" in ead_instance.data
@@ -50,7 +128,7 @@ def test_initialization_and_parsing(ead_instance):
 
 def test_parse_empty_xml(empty_xml):
     """Test parsing an empty but valid EAD XML file"""
-    ead = Ead(empty_xml)
+    ead = EAD.from_path(empty_xml)
     assert ead.data["id"] == "test123"
     assert ead.data["title"] == "Test Collection"
     assert ead.data["level"] == "collection"
@@ -197,40 +275,40 @@ def test_parse_digital_objects(ead_instance):
 def test_nonexistent_file():
     """Test error handling when file doesn't exist"""
     with pytest.raises(FileNotFoundError) as excinfo:
-        Ead("nonexistent_file.xml")
+        EAD.from_path("nonexistent_file.xml")
     assert "EAD file not found" in str(excinfo.value)
     assert "nonexistent_file.xml" in str(excinfo.value)
 
 def test_directory_as_file():
     """Test error handling when a directory is provided instead of a file"""
     with pytest.raises(IsADirectoryError) as excinfo:
-        Ead("tests")  # Assuming 'tests' directory exists
+        EAD.from_path("tests")  # Assuming 'tests' directory exists
     assert "is a directory, not a file" in str(excinfo.value)
 
 def test_file_permission_error(monkeypatch):
     """Test error handling when file doesn't have read permissions"""
-    # Create a temporary mock function to simulate permission error
-    def mock_access(*args, **kwargs):
+
+    # Mock the specific methods:
+    def mock_access(path, mode):
+        # Always return False to simulate "no read permission"
         return False
-    
-    # Create a temporary mock function that makes the file appear to exist
-    def mock_exists(*args, **kwargs):
+
+    def mock_exists(path):
+        # Return True so that the code doesn't think the file is missing
         return True
-    
-    def mock_isfile(*args, **kwargs):
+
+    def mock_isfile(path):
+        # Return True so that the code doesn't think it's a directory
         return True
-    
-    # Apply the monkeypatch to os.access to simulate permission error
+
+    # Apply partial patches rather than replacing os.path entirely
     monkeypatch.setattr(os, "access", mock_access)
-    monkeypatch.setattr(os, "path", 
-        type('MockPath', (), {
-            'exists': mock_exists,
-            'isfile': mock_isfile,
-        })()
-    )
-    
+    monkeypatch.setattr(os.path, "exists", mock_exists)
+    monkeypatch.setattr(os.path, "isfile", mock_isfile)
+
+    # Now try constructing an EAD instance
     with pytest.raises(PermissionError) as excinfo:
-        Ead("fake_permission_error.xml")
+        EAD.from_path("fake_permission_error.xml")  # The code should raise PermissionError
     assert "Permission denied" in str(excinfo.value)
 
 def test_invalid_xml_content():
@@ -247,11 +325,116 @@ def test_invalid_xml_content():
     
     try:
         with pytest.raises(ValueError) as excinfo:
-            Ead(temp_file.name)
+            EAD.from_path(temp_file.name)
         assert "Invalid XML" in str(excinfo.value)
     finally:
         # Clean up
         os.unlink(temp_file.name)
+
+def test_from_string():
+    """Test creating an EAD instance from a string"""
+    xml_string = """<?xml version="1.0" encoding="UTF-8"?>
+    <ead xmlns="urn:isbn:1-931666-22-9">
+        <eadheader>
+            <eadid>test123</eadid>
+        </eadheader>
+        <archdesc level="collection">
+            <did>
+                <unittitle>Test Collection</unittitle>
+            </did>
+            <dsc></dsc>
+        </archdesc>
+    </ead>"""
+    
+    ead = EAD.from_string(xml_string)
+    assert ead.data["id"] == "test123"
+    assert ead.data["title"] == "Test Collection"
+    assert ead.data["level"] == "collection"
+
+def test_from_bytes():
+    """Test creating an EAD instance from bytes"""
+    xml_string = """<?xml version="1.0" encoding="UTF-8"?>
+    <ead xmlns="urn:isbn:1-931666-22-9">
+        <eadheader>
+            <eadid>test123</eadid>
+        </eadheader>
+        <archdesc level="collection">
+            <did>
+                <unittitle>Test Collection</unittitle>
+            </did>
+            <dsc></dsc>
+        </archdesc>
+    </ead>"""
+    
+    xml_bytes = xml_string.encode('utf-8')
+    ead = EAD.from_bytes(xml_bytes)
+    assert ead.data["id"] == "test123"
+    assert ead.data["title"] == "Test Collection"
+    assert ead.data["level"] == "collection"
+
+def test_from_file():
+    """Test creating an EAD instance from a file-like object"""
+    xml_string = """<?xml version="1.0" encoding="UTF-8"?>
+    <ead xmlns="urn:isbn:1-931666-22-9">
+        <eadheader>
+            <eadid>test123</eadid>
+        </eadheader>
+        <archdesc level="collection">
+            <did>
+                <unittitle>Test Collection</unittitle>
+            </did>
+            <dsc></dsc>
+        </archdesc>
+    </ead>"""
+    
+    file_like = io.StringIO(xml_string)
+    ead = EAD.from_file(file_like)
+    assert ead.data["id"] == "test123"
+    assert ead.data["title"] == "Test Collection"
+    assert ead.data["level"] == "collection"
+
+def test_from_file_bytesio():
+    """Test creating an EAD instance from a BytesIO file-like object"""
+    xml_string = """<?xml version="1.0" encoding="UTF-8"?>
+    <ead xmlns="urn:isbn:1-931666-22-9">
+        <eadheader>
+            <eadid>test456</eadid>
+        </eadheader>
+        <archdesc level="collection">
+            <did>
+                <unittitle>BytesIO Test Collection</unittitle>
+            </did>
+            <dsc></dsc>
+        </archdesc>
+    </ead>"""
+    
+    # Create a BytesIO object
+    file_like = io.BytesIO(xml_string.encode('utf-8'))
+    ead = EAD.from_file(file_like)
+    assert ead.data["id"] == "test456"
+    assert ead.data["title"] == "BytesIO Test Collection"
+    assert ead.data["level"] == "collection"
+
+def test_from_file_empty():
+    """Test error handling when file-like object is empty"""
+    empty_file = io.StringIO("")
+    
+    with pytest.raises(ValueError) as excinfo:
+        EAD.from_file(empty_file)
+    assert "Invalid XML" in str(excinfo.value)
+
+def test_from_file_invalid_xml():
+    """Test error handling when file-like object contains invalid XML"""
+    invalid_xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <ead>
+        <unclosed_tag>
+    </ead>"""
+    
+    file_like = io.StringIO(invalid_xml)
+    
+    with pytest.raises(ValueError) as excinfo:
+        EAD.from_file(file_like)
+    assert "Invalid XML" in str(excinfo.value)
 
 def test_create_csv_data(ead_instance):
     """Test creation of CSV data"""
@@ -334,3 +517,21 @@ def test_create_and_save_csv(ead_instance):
     
     # Clean up
     os.unlink(output_path)
+
+def test_type_validation():
+    """Test type validation in class methods"""
+    # Test from_path with non-string
+    with pytest.raises(TypeError):
+        EAD.from_path(123)
+    
+    # Test from_string with non-string
+    with pytest.raises(TypeError):
+        EAD.from_string(123)
+    
+    # Test from_bytes with non-bytes
+    with pytest.raises(TypeError):
+        EAD.from_bytes("not bytes")
+    
+    # Test from_file with non-file-like object
+    with pytest.raises(TypeError):
+        EAD.from_file("not a file object")
