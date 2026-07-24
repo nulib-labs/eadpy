@@ -1,5 +1,6 @@
 import io
 import os
+import warnings
 import json
 import csv
 import tempfile
@@ -537,3 +538,80 @@ def test_type_validation():
     # Test from_file with non-file-like object
     with pytest.raises(TypeError):
         EAD.from_file("not a file object")
+
+def test_chunks_include_item_notes_subjects_daos_and_creators():
+    """Item-level content of every supported kind reaches the chunk text."""
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <ead xmlns="urn:isbn:1-931666-22-9">
+        <eadheader><eadid>chunk-test</eadid></eadheader>
+        <archdesc level="collection">
+            <did><unittitle>Test Collection</unittitle></did>
+            <dsc>
+                <c01 level="item" id="c1">
+                    <did>
+                        <unittitle>Diary</unittitle>
+                        <origination label="creator"><persname>Example, A.</persname></origination>
+                        <dao xmlns:xlink="http://www.w3.org/1999/xlink"
+                             xlink:href="https://example.org/diary"/>
+                    </did>
+                    <acqinfo><p>Gift of the family.</p></acqinfo>
+                    <controlaccess><subject>Diaries</subject></controlaccess>
+                </c01>
+            </dsc>
+        </archdesc>
+    </ead>"""
+    chunk = EAD.from_string(xml).create_item_chunks()[0]
+    text = chunk["text"]
+    assert "Acqinfo: Gift of the family." in text
+    assert "Subjects: Diaries" in text
+    # A <dao> with no label contributes its bare href
+    assert "Digital_objects: https://example.org/diary" in text
+    assert "Creators: Example, A. (persname)" in text
+
+
+def test_entity_reference_after_sibling_element_keeps_tail_text():
+    """An entity ref between elements is dropped without losing its tail."""
+    xml = """<!DOCTYPE ead [<!ENTITY su_name SYSTEM "su_name.txt">]>
+    <ead><eadheader><eadid>t</eadid></eadheader>
+    <archdesc level="collection"><did>
+        <unittitle>Papers of <emph>A. Example</emph> &su_name; and Others</unittitle>
+    </did><dsc/></archdesc></ead>"""
+    with pytest.warns(UserWarning, match="su_name"):
+        data = EAD.from_string(xml).data
+    assert data["title"] == "Papers of A. Example and Others"
+
+
+def test_unreadable_source_raises_io_error():
+    """lxml's own read failures are reported with the source in the message."""
+    with pytest.raises(IOError) as excinfo:
+        EAD("/nonexistent/directory/file.xml")
+    assert "Error reading from" in str(excinfo.value)
+
+
+def test_unsupported_source_type_raises_runtime_error():
+    """Anything lxml cannot parse from at all is a RuntimeError."""
+    with pytest.raises(RuntimeError) as excinfo:
+        EAD(42)
+    assert "Unexpected error parsing EAD input" in str(excinfo.value)
+
+
+def test_encoding_parameter_is_deprecated():
+    """The parameter is ignored; passing it should say so rather than
+    silently do nothing (a caller meaning include_internal can land here)."""
+    xml = """<ead xmlns="urn:isbn:1-931666-22-9">
+        <eadheader><eadid>t</eadid></eadheader>
+        <archdesc level="collection"><did><unittitle>T</unittitle></did><dsc/></archdesc>
+    </ead>"""
+    with pytest.warns(DeprecationWarning, match="'encoding' parameter is deprecated"):
+        ead = EAD.from_string(xml, "iso-8859-1")
+    assert ead.data["title"] == "T"
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert EAD.from_string(xml).data["title"] == "T"
+
+
+def test_include_internal_must_be_keyword():
+    """Guards against from_string(xml, True) landing on the encoding slot."""
+    with pytest.raises(TypeError):
+        EAD.from_bytes(b"<ead/>", True)

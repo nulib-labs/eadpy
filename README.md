@@ -7,9 +7,67 @@ A Python library for working with Encoded Archival Description (EAD) XML documen
 
 ## Features
 
-- Parse and manipulate EAD 2002 XML documents (EAD3 is not yet supported)
+- Parse and manipulate EAD 2002 and EAD3 XML documents — the version is auto-detected
+- Experimental support for the draft EAD 4.0 schema (unreleased; mappings may change)
+- Excludes staff-only content marked `audience="internal"` by default
 - Convert EAD to various formats (JSON, CSV)
 - Tools for batch processing of EAD files
+
+## EAD Version Support
+
+EADPy detects the EAD version from the document's schema namespace (with a
+structural fallback for documents without a namespace) and exposes it as
+`ead.ead_version`:
+
+| Version | Namespace | `ead_version` |
+|---|---|---|
+| EAD 2002 | `urn:isbn:1-931666-22-9` | `"2002"` |
+| EAD3 (1.1.x) | `http://ead3.archivists.org/schema/` | `"ead3"` |
+| EAD 4.0 (draft) | `https://standards.openpreservation.org/ead/v4` | `"ead4"` |
+
+All versions produce the same normalized data structure, JSON chunks, and CSV
+columns, so downstream consumers don't need to care which version they were
+given. Version-specific constructs are folded into the common shape: EAD3
+`<unitdatestructured>` and `<physdescstructured>` are read alongside their
+legacy equivalents (ArchivesSpace exports emit both), `<part>` children of
+name and subject elements are joined, and `<daoset>` groups are flattened
+into the digital objects list.
+
+EAD 4.0 support is **experimental** — the schema has not been released and
+element mappings may change. Two limitations worth knowing: EAD 4.0 has no
+repository element, so `repository` is always `None`, and it has no `<dao>`
+equivalent, so `<reference href="...">` links in a component's own
+description are reported as its digital objects.
+
+A `<ead>` root with an unrecognized namespace raises `EadParseError`
+(before v0.2.0 it was parsed as EAD 2002).
+
+## Internal (Unpublished) Content
+
+Description marked `audience="internal"` is staff-only: ArchivesSpace exports
+unpublished records this way when "include unpublished" is selected, and
+repositories use it for internal-use `<dao>` links and processing notes.
+EADPy **excludes** that content by default, so JSON chunks and CSV rows are
+safe to index or display:
+
+```python
+ead = eadpy.from_path("finding_aid.xml")                       # internal content skipped
+ead = eadpy.from_path("finding_aid.xml", include_internal=True)  # full archivist view
+```
+
+```bash
+eadpy file finding_aid.xml -o output.json --include-internal
+```
+
+`include_internal` is a keyword-only argument on all four constructors. The
+filter applies to
+any element carrying the attribute — components, notes, digital objects,
+access terms and inline markup — with one exception: `<eadheader>` and
+`<control>` are never dropped, since marking the finding aid's own header
+`audience="internal"` is a common convention and discarding it would take the
+record identifier with it. If a document's entire `<archdesc>` is marked
+internal, parsing emits a `UserWarning` rather than silently returning an
+empty record.
 
 ## Installation
 
@@ -159,23 +217,27 @@ ead.save_csv_data(csv_data, "output.csv")
 
 ### Package Level Functions 
 
-- **`from_path(file_path: str) -> EAD`**: Creates an EAD instance from a file path. Validates that the file exists, is not a directory, and is readable.
+- **`from_path(file_path: str, *, include_internal: bool = False) -> EAD`**: Creates an EAD instance from a file path. Validates that the file exists, is not a directory, and is readable. Set `include_internal=True` to keep `audience="internal"` content.
 
-- **`from_string(xml_string: str, encoding: str = 'utf-8') -> EAD`**: Creates an EAD instance from an XML string. Any XML encoding declaration is ignored (the string is already decoded); the `encoding` parameter is deprecated and unused.
+- **`from_string(xml_string: str, encoding: str = None, *, include_internal: bool = False) -> EAD`**: Creates an EAD instance from an XML string. Any XML encoding declaration is ignored (the string is already decoded); the `encoding` parameter is deprecated and raises a `DeprecationWarning` if passed.
 
-- **`from_bytes(xml_bytes: bytes) -> EAD`**: Creates an EAD instance from XML bytes. Useful when working with binary data from HTTP responses or other sources.
+- **`from_bytes(xml_bytes: bytes, *, include_internal: bool = False) -> EAD`**: Creates an EAD instance from XML bytes. Useful when working with binary data from HTTP responses or other sources.
 
-- **`from_file(file_like_object) -> EAD`**: Creates an EAD instance from a file-like object with a `read()` method. Works with both text-based (StringIO) and binary (BytesIO) file objects.
+- **`from_file(file_like_object, *, include_internal: bool = False) -> EAD`**: Creates an EAD instance from a file-like object with a `read()` method. Works with both text-based (StringIO) and binary (BytesIO) file objects.
 
 ### Class Methods (Object Creation)
 
-- **`EAD.from_path(file_path: str) -> EAD`**: Creates an EAD instance from a file path. Validates that the file exists, is not a directory, and is readable.
+- **`EAD.from_path(file_path: str, *, include_internal: bool = False) -> EAD`**: Creates an EAD instance from a file path. Validates that the file exists, is not a directory, and is readable. Set `include_internal=True` to keep `audience="internal"` content.
 
-- **`EAD.from_string(xml_string: str, encoding: str = 'utf-8') -> EAD`**: Creates an EAD instance from an XML string. Any XML encoding declaration is ignored (the string is already decoded); the `encoding` parameter is deprecated and unused.
+- **`EAD.from_string(xml_string: str, encoding: str = None, *, include_internal: bool = False) -> EAD`**: Creates an EAD instance from an XML string. Any XML encoding declaration is ignored (the string is already decoded); the `encoding` parameter is deprecated and raises a `DeprecationWarning` if passed.
 
-- **`EAD.from_bytes(xml_bytes: bytes) -> EAD`**: Creates an EAD instance from XML bytes. Useful when working with binary data from HTTP responses or other sources.
+- **`EAD.from_bytes(xml_bytes: bytes, *, include_internal: bool = False) -> EAD`**: Creates an EAD instance from XML bytes. Useful when working with binary data from HTTP responses or other sources.
 
-- **`EAD.from_file(file_like_object) -> EAD`**: Creates an EAD instance from a file-like object with a `read()` method. Works with both text-based (StringIO) and binary (BytesIO) file objects.
+- **`EAD.from_file(file_like_object, *, include_internal: bool = False) -> EAD`**: Creates an EAD instance from a file-like object with a `read()` method. Works with both text-based (StringIO) and binary (BytesIO) file objects.
+
+### Instance Properties
+
+- **`ead_version -> str`**: The detected EAD version of the parsed document: `"2002"`, `"ead3"`, or `"ead4"`.
 
 ### Instance Methods (Data Export)
 
@@ -204,6 +266,7 @@ ead.save_csv_data(csv_data, "output.csv")
 - `-o, --output`: Path to the output file
 - `-f, --format`: Output format ('json' or 'csv')
 - `-v, --verbose`: Print detailed information
+- `--include-internal`: Keep content marked `audience="internal"` (excluded by default)
 
 ### Directory command options
 
@@ -212,6 +275,7 @@ ead.save_csv_data(csv_data, "output.csv")
 - `-f, --format`: Output format ('json' or 'csv', default: 'json')
 - `-r, --recursive`: Process subdirectories recursively
 - `-v, --verbose`: Print detailed information
+- `--include-internal`: Keep content marked `audience="internal"` (excluded by default)
 
 ## Development
 
@@ -245,6 +309,13 @@ source .venv/bin/activate  # On Unix/macOS
 ```bash
 uv run pytest
 ```
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md). Note that 0.2.0 changes two default
+behaviors: `audience="internal"` content is now excluded, and an `<ead>` root
+with an unrecognized namespace raises `EadParseError` instead of being parsed
+as EAD 2002.
 
 ## Contributing
 

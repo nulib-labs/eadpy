@@ -1,0 +1,304 @@
+<ead xmlns="https://standards.openpreservation.org/ead/v4" audience="external">
+  <control>
+    <recordId>sample_ead4.xml</recordId>
+    <maintenanceAgency>
+      <agencyName>Sample University Archives</agencyName>
+    </maintenanceAgency>
+    <maintenanceHistory>
+      <maintenanceEvent maintenanceEventType="created" agentType="human">
+        <eventDateTime standardDateTime="2026-01-01">2026-01-01</eventDateTime>
+        <agent>B. Sample</agent>
+      </maintenanceEvent>
+    </maintenanceHistory>
+  </control>
+  <archDesc level="collection">
+    <identificationData>
+      <unitTitle>Sample Collection</unitTitle>
+      <unitDate unitDateType="inclusive">
+        <date standardDate="2023">2023</date>
+      </unitDate>
+      <unitId>SAMPLE-001</unitId>
+      <extent>
+        <quantity>42</quantity>
+        <unitOfMeasurement>items</unitOfMeasurement>
+      </extent>
+      <genreForm>photographs</genreForm>
+      <languageOfMaterial>
+        <language languageCode="eng">English</language>
+      </languageOfMaterial>
+      <legalStatus>Public records</legalStatus>
+    </identificationData>
+    <agents>
+      <agent agentType="person">
+        <label>Example, A., 1900-1980</label>
+      </agent>
+    </agents>
+    <places>
+      <place>
+        <placeName>Chicago (Ill.)</placeName>
+      </place>
+    </places>
+    <scopeContent>
+      <head>Scope and Contents</head>
+      <p>Personal and professional papers of A. Example.</p>
+    </scopeContent>
+    <accessConditions>
+      <p>Open for research.</p>
+    </accessConditions>
+    <subjectHeadings>
+      <subject>
+        <term>Photography</term>
+        <term>History</term>
+      </subject>
+    </subjectHeadings>
+    <descriptionOfComponents>
+      <!-- First top-level file (c01 #1) -->
+      <c01 level="file">
+        <identificationData>
+          <unitTitle>Series 1: Personal Papers</unitTitle>
+        </identificationData>
+        <!-- c02 #1 (item with grouped items) -->
+        <c02 level="item">
+          <identificationData>
+            <unitTitle>Teenage performances</unitTitle>
+            <unitDate unitDateType="inclusive">
+              <dateRange>
+                <fromDate standardDate="1950">1950</fromDate>
+                <toDate standardDate="1955">1955</toDate>
+              </dateRange>
+            </unitDate>
+            <extent>
+              <quantity>5</quantity>
+              <unitOfMeasurement>photographs</unitOfMeasurement>
+            </extent>
+          </identificationData>
+        </c02>
+        <!-- c02 #2 (file with c03s) -->
+        <c02 level="file">
+          <identificationData>
+            <unitTitle>Correspondence</unitTitle>
+          </identificationData>
+          <!-- c03 #1 (item) -->
+          <c03 level="item">
+            <identificationData>
+              <unitTitle>Letter from C. Placeholder</unitTitle>
+              <unitDate>
+                <date standardDate="1960-01-15">1960-01-15</date>
+              </unitDate>
+              <container localType="box">1</container>
+              <container localType="folder">2</container>
+            </identificationData>
+          </c03>
+          <!-- c03 #2 (item with c04) -->
+          <c03 level="item">
+            <identificationData>
+              <unitTitle>Family correspondence</unitTitle>
+            </identificationData>
+            <!-- c04 #1 (item) -->
+            <c04 level="item">
+              <identificationData>
+                <unitTitle>Letter from Mother</unitTitle>
+                <unitDate>
+                  <textualDate>May 1962</textualDate>
+                  <date standardDate="1962-05-20">1962-05-20</date>
+                </unitDate>
+                <descriptiveNote>
+                  <p>Digitized in 2020. See
+                    <reference href="https://example.org/letters/mother-1.jpg">Letter page 1</reference>
+                  </p>
+                </descriptiveNote>
+              </identificationData>
+            </c04>
+          </c03>
+        </c02>
+        <!-- c02 #3 (file with c03) -->
+        <c02 level="file">
+          <identificationData>
+            <unitTitle>Academic Records</unitTitle>
+          </identificationData>
+          <!-- c03 #3 (item) -->
+          <c03 level="item">
+            <identificationData>
+              <unitTitle>University Diploma</unitTitle>
+              <unitDate><date standardDate="1965">1965</date></unitDate>
+            </identificationData>
+          </c03>
+        </c02>
+      </c01>
+
+      <!-- Second top-level file (c01 #2) -->
+      <c01 level="file">
+        <identificationData>
+          <unitTitle>Series 2: Professional Work</unitTitle>
+        </identificationData>
+        <!-- c02 #4 (item with grouped items) -->
+        <c02 level="item">
+          <identificationData>
+            <unitTitle>Portraits</unitTitle>
+            <unitDate>
+              <dateRange>
+                <fromDate standardDate="1970">1970</fromDate>
+                <toDate standardDate="1975">1975</toDate>
+              </dateRange>
+            </unitDate>
+          </identificationData>
+        </c02>
+        <!-- c02 #5 (item) -->
+        <c02 level="item">
+          <identificationData>
+            <unitTitle>Employment Contract</unitTitle>
+            <unitDate><date standardDate="1972">1972</date></unitDate>
+          </identificationData>
+        </c02>
+        <!-- c02 #6 (file with c03s) -->
+        <c02 level="file">
+          <identificationData>
+            <unitTitle>Publications</unitTitle>
+          </identificationData>
+          <!-- c03 #4 (file) -->
+          <c03 level="file">
+            <identificationData>
+              <unitTitle>Journal Articles</unitTitle>
+            </identificationData>
+          </c03>
+          <!-- c03 #5 (item) -->
+          <c03 level="item">
+            <identificationData>
+              <unitTitle>Book Manuscript</unitTitle>
+              <unitDate><date standardDate="1978">1978</date></unitDate>
+            </identificationData>
+          </c03>
+        </c02>
+        <!-- c02 #7 (file with c03) -->
+        <c02 level="file">
+          <identificationData>
+            <unitTitle>Awards</unitTitle>
+          </identificationData>
+          <!-- c03 #6 (item with c04) -->
+          <c03 level="item">
+            <identificationData>
+              <unitTitle>Recognition certificates</unitTitle>
+            </identificationData>
+            <!-- c04 #2 (item) -->
+            <c04 level="item">
+              <identificationData>
+                <unitTitle>Distinguished Service Award</unitTitle>
+                <unitDate><date standardDate="1980">1980</date></unitDate>
+              </identificationData>
+            </c04>
+          </c03>
+        </c02>
+      </c01>
+
+      <!-- Third top-level file (c01 #3) -->
+      <c01 level="file">
+        <identificationData>
+          <unitTitle>Series 3: Personal Collections</unitTitle>
+        </identificationData>
+        <!-- c02 #8 (item with grouped items) -->
+        <c02 level="item">
+          <identificationData>
+            <unitTitle>Unidentified photographs</unitTitle>
+            <unitDate>
+              <dateRange>
+                <fromDate standardDate="1980">1980</fromDate>
+                <toDate standardDate="1985">1985</toDate>
+              </dateRange>
+            </unitDate>
+          </identificationData>
+        </c02>
+        <!-- c02 #9 (file with c03) -->
+        <c02 level="file">
+          <identificationData>
+            <unitTitle>Travel Memorabilia</unitTitle>
+          </identificationData>
+          <!-- c03 #7 (file) -->
+          <c03 level="file">
+            <identificationData>
+              <unitTitle>European Travels</unitTitle>
+              <unitDate>
+                <dateRange>
+                  <fromDate standardDate="1985">1985</fromDate>
+                  <toDate standardDate="1990">1990</toDate>
+                </dateRange>
+              </unitDate>
+            </identificationData>
+          </c03>
+        </c02>
+        <!-- c02 #10 (file with c03) -->
+        <c02 level="file">
+          <identificationData>
+            <unitTitle>Hobbies</unitTitle>
+          </identificationData>
+          <!-- c03 #8 (file) -->
+          <c03 level="file">
+            <identificationData>
+              <unitTitle>Stamp Collection</unitTitle>
+              <unitDate>
+                <dateRange>
+                  <fromDate standardDate="1975">1975</fromDate>
+                  <toDate standardDate="1995">1995</toDate>
+                </dateRange>
+              </unitDate>
+            </identificationData>
+          </c03>
+        </c02>
+      </c01>
+
+      <!-- Fourth top-level file (c01 #4) -->
+      <c01 level="file">
+        <identificationData>
+          <unitTitle>Series 4: Legacy Materials</unitTitle>
+        </identificationData>
+        <!-- c02 #11 (item with grouped items) -->
+        <c02 level="item">
+          <identificationData>
+            <unitTitle>Silver Box production</unitTitle>
+            <unitDate>
+              <dateRange>
+                <fromDate standardDate="1990">1990</fromDate>
+                <toDate standardDate="1995">1995</toDate>
+              </dateRange>
+            </unitDate>
+          </identificationData>
+        </c02>
+        <!-- c02 #12 (file) -->
+        <c02 level="file">
+          <identificationData>
+            <unitTitle>Interviews</unitTitle>
+            <unitDate>
+              <dateRange>
+                <fromDate standardDate="1995">1995</fromDate>
+                <toDate standardDate="2000">2000</toDate>
+              </dateRange>
+            </unitDate>
+          </identificationData>
+          <!-- c03 #9 (file) -->
+          <c03 level="file">
+            <identificationData>
+              <unitTitle>Media Interviews</unitTitle>
+              <unitDate>
+                <dateRange>
+                  <fromDate standardDate="1995">1995</fromDate>
+                  <toDate standardDate="2000">2000</toDate>
+                </dateRange>
+              </unitDate>
+            </identificationData>
+          </c03>
+        </c02>
+        <!-- c02 #13 (file with grouped items) -->
+        <c02 level="file">
+          <identificationData>
+            <unitTitle>Shadowland Ballroom</unitTitle>
+            <unitDate>
+              <dateRange>
+                <fromDate standardDate="2000">2000</fromDate>
+                <toDate standardDate="2005">2005</toDate>
+              </dateRange>
+            </unitDate>
+          </identificationData>
+        </c02>
+      </c01>
+    </descriptionOfComponents>
+  </archDesc>
+</ead>

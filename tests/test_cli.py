@@ -382,3 +382,72 @@ class TestMainCLI:
 
         assert excinfo.value.code == 0
         assert __version__ in capsys.readouterr().out
+
+class TestVerboseOutput:
+    """Tests for the -v/--verbose reporting in process_file"""
+
+    def test_verbose_reports_version_and_output(self, sample_xml_path, temp_dir, capsys):
+        output_file = os.path.join(temp_dir, "verbose.json")
+        success, result = process_file(sample_xml_path, output_file, "json", True)
+
+        assert success is True
+        out = capsys.readouterr().out
+        assert f"Parsing EAD file: {sample_xml_path}" in out
+        assert "Detected EAD version: 2002" in out
+        assert f"Successfully wrote JSON output to: {output_file}" in out
+
+
+class TestIncludeInternal:
+    """Tests for the --include-internal flag"""
+
+    @pytest.fixture
+    def internal_xml(self, temp_dir):
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <ead xmlns="urn:isbn:1-931666-22-9">
+            <eadheader><eadid>internal-test</eadid></eadheader>
+            <archdesc level="collection">
+                <did><unittitle>Test Collection</unittitle></did>
+                <dsc>
+                    <c01 level="item" id="c1"><did><unittitle>Public item</unittitle></did></c01>
+                    <c01 level="item" id="c2" audience="internal">
+                        <did><unittitle>Staff item</unittitle></did></c01>
+                </dsc>
+            </archdesc>
+        </ead>"""
+        path = os.path.join(temp_dir, "internal.xml")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(xml)
+        return path
+
+    def _titles(self, output_file):
+        import json
+        with open(output_file, encoding="utf-8") as f:
+            return [chunk["metadata"]["title"] for chunk in json.load(f)]
+
+    def test_internal_excluded_by_default(self, internal_xml, temp_dir):
+        out = os.path.join(temp_dir, "default.json")
+        assert process_file(internal_xml, out, "json", False)[0] is True
+        assert self._titles(out) == ["Public item"]
+
+    def test_include_internal_keeps_content(self, internal_xml, temp_dir):
+        out = os.path.join(temp_dir, "internal.json")
+        assert process_file(internal_xml, out, "json", False, True)[0] is True
+        assert self._titles(out) == ["Public item", "Staff item"]
+
+    def test_main_passes_include_internal_flag(self, internal_xml, temp_dir, monkeypatch):
+        out = os.path.join(temp_dir, "main.json")
+        monkeypatch.setattr(
+            sys, "argv", ["eadpy", "file", internal_xml, "-o", out, "--include-internal"]
+        )
+        main()
+        assert self._titles(out) == ["Public item", "Staff item"]
+
+    def test_directory_processing_passes_flag(self, internal_xml, temp_dir):
+        out_dir = os.path.join(temp_dir, "out")
+        success, failure, _ = process_directory(
+            os.path.dirname(internal_xml), out_dir, "json", False, False, True
+        )
+        assert (success, failure) == (1, 0)
+        assert self._titles(os.path.join(out_dir, "internal.json")) == [
+            "Public item", "Staff item"
+        ]

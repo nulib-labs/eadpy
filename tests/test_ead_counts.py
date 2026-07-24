@@ -15,10 +15,16 @@ sample.xml summary:
       physical items (e.g. "5 photographs").
 """
 
-@pytest.fixture(scope="module")
-def ead_instance():
+@pytest.fixture(
+    scope="module",
+    params=["sample.xml", "sample_ead3.xml", "sample_ead4.xml"],
+)
+def ead_instance(request):
     """
-    Creates and returns an EAD instance from the sample XML file.
+    Creates and returns an EAD instance from a sample XML file.
+
+    Parametrized over all supported EAD versions; the fixtures share the
+    same component tree, so every count applies to each of them.
 
     Returns
     -------
@@ -26,7 +32,7 @@ def ead_instance():
         An instance of the EAD class initialized with test data.
     """
     # Use the package-level from_path function instead of class method
-    return from_path(str(Path(__file__).parent / "sample.xml"))
+    return from_path(str(Path(__file__).parent / request.param))
 
 def test_top_level_files_count(ead_instance):
     # Count top-level components

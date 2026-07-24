@@ -1,15 +1,37 @@
 [project]
 name = "eadpy"
-version = "0.1.4"
+version = "0.2.0"
 description = "A Python library for working with Encoded Archival Description (EAD) XML files"
 readme = "README.md"
 authors = [
     { name = "Brendan Quinn", email = "brendan-quinn@northwestern.edu" }
 ]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["ead", "archives", "finding-aid", "xml", "archivesspace", "ead3"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Markup :: XML",
+]
 requires-python = ">=3.11"
 dependencies = [
     "lxml>=6.1.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/nulib-labs/eadpy"
+Repository = "https://github.com/nulib-labs/eadpy"
+Issues = "https://github.com/nulib-labs/eadpy/issues"
+Changelog = "https://github.com/nulib-labs/eadpy/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]
@@ -24,3 +46,18 @@ dev = [
 
 [project.scripts]
 eadpy = "eadpy.cli:main"
+
+[tool.hatch.build.targets.sdist]
+# Everything needed to build and test from source, and nothing else: the
+# working tree also holds local tooling config and a scratch corpus of real
+# finding aids that have no place in a published artifact.
+include = [
+    "src", "tests", "README.md", "CHANGELOG.md", "LICENSE", "pyproject.toml",
+    "pytest.ini",
+]
+
+[tool.coverage.run]
+source = ["eadpy"]
+
+[tool.coverage.report]
+exclude_also = ["if __name__ == .__main__.:"]

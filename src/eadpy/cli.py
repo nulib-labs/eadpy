@@ -10,8 +10,9 @@ import warnings
 from typing import List, Optional, Tuple
 from eadpy import from_path, __version__
 
-def process_file(ead_file: str, output_file: Optional[str] = None, 
-                format_type: Optional[str] = None, verbose: bool = False) -> Tuple[bool, str]:
+def process_file(ead_file: str, output_file: Optional[str] = None,
+                format_type: Optional[str] = None, verbose: bool = False,
+                include_internal: bool = False) -> Tuple[bool, str]:
     """
     Process a single EAD XML file.
     
@@ -25,6 +26,8 @@ def process_file(ead_file: str, output_file: Optional[str] = None,
         Output format ('json' or 'csv')
     verbose : bool
         Whether to print detailed information
+    include_internal : bool
+        Whether to keep content marked audience="internal"
     
     Returns
     -------
@@ -58,9 +61,12 @@ def process_file(ead_file: str, output_file: Optional[str] = None,
         # present them as plain messages instead of Python warning tracebacks.
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            ead = from_path(ead_file)
+            ead = from_path(ead_file, include_internal=include_internal)
         for warning in caught:
             print(f"Warning: {warning.message}", file=sys.stderr)
+
+        if verbose:
+            print(f"Detected EAD version: {ead.ead_version}")
 
         if format_type == 'csv':
             ead.create_and_save_csv(output_file)
@@ -77,7 +83,8 @@ def process_file(ead_file: str, output_file: Optional[str] = None,
 
 def process_directory(directory: str, output_dir: Optional[str] = None,
                      format_type: str = 'json', recursive: bool = False,
-                     verbose: bool = False) -> Tuple[int, int, List[str]]:
+                     verbose: bool = False,
+                     include_internal: bool = False) -> Tuple[int, int, List[str]]:
     """
     Process all XML files in a directory.
     
@@ -93,6 +100,8 @@ def process_directory(directory: str, output_dir: Optional[str] = None,
         Whether to process subdirectories recursively
     verbose : bool
         Whether to print detailed information
+    include_internal : bool
+        Whether to keep content marked audience="internal"
     
     Returns
     -------
@@ -136,7 +145,8 @@ def process_directory(directory: str, output_dir: Optional[str] = None,
             output_base = os.path.splitext(xml_file)[0]
             output_file = f"{output_base}.{format_type}"
         
-        success, result = process_file(xml_file, output_file, format_type, verbose)
+        success, result = process_file(xml_file, output_file, format_type, verbose,
+                                       include_internal)
         
         if success:
             success_count += 1
@@ -179,6 +189,9 @@ def main():
                             help='Output format (default: determined by output file extension)')
     file_parser.add_argument('-v', '--verbose', action='store_true', 
                             help='Print detailed information')
+    file_parser.add_argument('--include-internal', action='store_true',
+                            help='Keep content marked audience="internal" '
+                                 '(excluded by default)')
     
     # Directory command
     dir_parser = subparsers.add_parser('dir', help='Process all EAD XML files in a directory')
@@ -190,6 +203,9 @@ def main():
                            help='Process subdirectories recursively')
     dir_parser.add_argument('-v', '--verbose', action='store_true',
                            help='Print detailed information')
+    dir_parser.add_argument('--include-internal', action='store_true',
+                           help='Keep content marked audience="internal" '
+                                '(excluded by default)')
     
     # Parse arguments
     args = parser.parse_args()
@@ -201,7 +217,8 @@ def main():
     
     # Process command
     if args.command == 'file':
-        success, result = process_file(args.input, args.output, args.format, args.verbose)
+        success, result = process_file(args.input, args.output, args.format,
+                                       args.verbose, args.include_internal)
         if not success:
             print(f"Error: {result}")
             print(f"Current working directory: {os.getcwd()}")
@@ -211,7 +228,8 @@ def main():
             
     elif args.command == 'dir':
         success_count, failure_count, errors = process_directory(
-            args.input_dir, args.output_dir, args.format, args.recursive, args.verbose
+            args.input_dir, args.output_dir, args.format, args.recursive,
+            args.verbose, args.include_internal
         )
         
         print(f"Processed {success_count + failure_count} files:")

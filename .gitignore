@@ -12,5 +12,5 @@ wheels/
 .vscode/
 *.DS_Store
 
-.coverage
+.coverage*
 htmlcov/
