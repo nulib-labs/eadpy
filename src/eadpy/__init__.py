@@ -2,8 +2,12 @@
 EADPy - A Python library for parsing EAD (Encoded Archival Description) XML files.
 """
 from eadpy.ead import EAD
-__version__ = "0.1.3"
-__all__ = ["EAD", "from_path", "from_string", "from_bytes", "from_file"]
+from eadpy.exceptions import EadpyError, EadParseError
+__version__ = "0.1.4"
+__all__ = [
+    "EAD", "EadpyError", "EadParseError",
+    "from_path", "from_string", "from_bytes", "from_file",
+]
 
 # Expose class methods directly at the package level
 def from_path(file_path):

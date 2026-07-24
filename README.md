@@ -7,7 +7,7 @@ A Python library for working with Encoded Archival Description (EAD) XML documen
 
 ## Features
 
-- Parse and manipulate EAD XML documents
+- Parse and manipulate EAD 2002 XML documents (EAD3 is not yet supported)
 - Convert EAD to various formats (JSON, CSV)
 - Tools for batch processing of EAD files
 
@@ -25,7 +25,7 @@ Install using `uv`:
 uv tool install eadpy
 ```
 
-EADPy requires Python 3.8 or higher.
+EADPy requires Python 3.11 or higher.
 
 ## Command-line Usage
 
@@ -161,7 +161,7 @@ ead.save_csv_data(csv_data, "output.csv")
 
 - **`from_path(file_path: str) -> EAD`**: Creates an EAD instance from a file path. Validates that the file exists, is not a directory, and is readable.
 
-- **`from_string(xml_string: str, encoding: str = 'utf-8') -> EAD`**: Creates an EAD instance from an XML string. Handles encoding the string to bytes for proper XML parsing.
+- **`from_string(xml_string: str, encoding: str = 'utf-8') -> EAD`**: Creates an EAD instance from an XML string. Any XML encoding declaration is ignored (the string is already decoded); the `encoding` parameter is deprecated and unused.
 
 - **`from_bytes(xml_bytes: bytes) -> EAD`**: Creates an EAD instance from XML bytes. Useful when working with binary data from HTTP responses or other sources.
 
@@ -171,7 +171,7 @@ ead.save_csv_data(csv_data, "output.csv")
 
 - **`EAD.from_path(file_path: str) -> EAD`**: Creates an EAD instance from a file path. Validates that the file exists, is not a directory, and is readable.
 
-- **`EAD.from_string(xml_string: str, encoding: str = 'utf-8') -> EAD`**: Creates an EAD instance from an XML string. Handles encoding the string to bytes for proper XML parsing.
+- **`EAD.from_string(xml_string: str, encoding: str = 'utf-8') -> EAD`**: Creates an EAD instance from an XML string. Any XML encoding declaration is ignored (the string is already decoded); the `encoding` parameter is deprecated and unused.
 
 - **`EAD.from_bytes(xml_bytes: bytes) -> EAD`**: Creates an EAD instance from XML bytes. Useful when working with binary data from HTTP responses or other sources.
 
@@ -226,25 +226,24 @@ git clone https://github.com/nulib-labs/eadpy
 cd eadpy
 ```
 
-2. Create and activate a virtual environment:
+2. Create a virtual environment and install the project with its dev dependencies:
 
 ```bash
-uv venv --python 3.13
+uv sync
+```
+
+3. Activate the virtual environment (optional — `uv run` works without it):
+
+```bash
 source .venv/bin/activate  # On Unix/macOS
 # or
 .venv\Scripts\activate  # On Windows
 ```
 
-3. Install development dependencies:
-
-```bash
-uv pip install -e ".[dev]"
-```
-
 ### Running tests
 
 ```bash
-pytest
+uv run pytest
 ```
 
 ## Contributing

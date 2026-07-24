@@ -1,10 +1,12 @@
 import hashlib
-import time
 import os
 import re
 import io
+import warnings
 from lxml import etree
 import csv
+
+from eadpy.exceptions import EadParseError
 
 class EAD:
     NAME_ELEMENTS = ["corpname", "famname", "name", "persname"]
@@ -78,19 +80,20 @@ class EAD:
     def from_string(cls, xml_string: str, encoding: str = 'utf-8'):
         """
         Creates an EAD instance from an XML string.
-        
+
         Parameters
         ----------
         xml_string : str
             String containing EAD XML content
         encoding : str, optional
-            Encoding of the XML string. Default is 'utf-8'
-            
+            Deprecated and ignored. A Python str carries no byte encoding,
+            so the string is always encoded to UTF-8 for parsing.
+
         Returns
         -------
         EAD
             An instance of the EAD class
-            
+
         Raises
         ------
         TypeError
@@ -100,13 +103,15 @@ class EAD:
         """
         if not isinstance(xml_string, str):
             raise TypeError("xml_string must be a string.")
+        # The string is already decoded, so an XML declaration naming some
+        # other encoding no longer applies — left in place it would make the
+        # parser mis-decode the UTF-8 bytes produced below.
+        xml_string = re.sub(r'^\s*<\?xml[^>]*\?>', '', xml_string, count=1)
         try:
-            # lxml prefers bytes for parsing strings with potential encoding issues
-            xml_bytes = xml_string.encode(encoding)
-            bytes_io = io.BytesIO(xml_bytes)
-            return cls(bytes_io) # Pass the file-like object
+            xml_bytes = xml_string.encode('utf-8')
         except Exception as e:
-            raise ValueError(f"Error encoding string or creating BytesIO: {e}")
+            raise ValueError(f"Error encoding string: {e}")
+        return cls(io.BytesIO(xml_bytes))
 
     @classmethod
     def from_bytes(cls, xml_bytes: bytes):
@@ -171,23 +176,35 @@ class EAD:
         Internal method to parse the EAD XML source using lxml.
         """
         try:
-            # Use a parser that removes blank text for cleaner processing
-            parser = etree.XMLParser(remove_blank_text=True, recover=False) # Use recover=False for stricter parsing
+            # Use a parser that removes blank text for cleaner processing.
+            # resolve_entities=False leaves declared entity references (often
+            # external boilerplate like <!ENTITY x SYSTEM "x.txt">) unexpanded
+            # instead of failing, matching ArchivesSpace's importer behavior
+            # and avoiding external file reads (XXE). Undeclared entities are
+            # still a hard parse error with recover=False.
+            parser = etree.XMLParser(
+                remove_blank_text=True, recover=False, resolve_entities=False
+            )
 
             # etree.parse handles both file paths (strings) and file-like objects
             tree = etree.parse(ead_source, parser)
 
+            self._strip_unresolved_entities(tree)
+
             # Remove namespaces (essential for consistent XPath)
             self._remove_namespaces(tree)
             root = tree.getroot()
+            self._check_ead_version(root)
 
             # Parse the top-level collection
             collection = self._parse_collection(root)
 
-            # Identify all top-level components (c, c01..c12)
+            # Identify all top-level components (c, c01..c12). EAD 2002 allows
+            # <dsc> groups nested inside <dsc>, so match components under any
+            # dsc; their own nested components are handled recursively.
             component_nodes = root.xpath(
-                "/ead/archdesc/dsc/c | " # More specific XPath root
-                + " | ".join(f"/ead/archdesc/dsc/c{i:02d}" for i in range(1, 13))
+                "/ead/archdesc//dsc/c | "
+                + " | ".join(f"/ead/archdesc//dsc/c{i:02d}" for i in range(1, 13))
             )
 
             # Parse child components under the main collection
@@ -196,9 +213,11 @@ class EAD:
             return collection
 
         except etree.XMLSyntaxError as e:
-            raise ValueError(
-                f"Invalid XML detected in '{self.ead_source_repr}': {str(e)}"
+            raise EadParseError(
+                f"Invalid XML detected in {self.ead_source_repr}: {str(e)}"
             )
+        except ValueError:
+            raise # Version/root checks above raise EadParseError with a clear message
         # Catch specific expected errors from from_path if they weren't caught there
         # (though they should be). Catching IOErrors is also good here.
         except FileNotFoundError:
@@ -206,11 +225,11 @@ class EAD:
         except PermissionError:
             raise # Re-raise
         except IOError as e:
-            raise IOError(f"Error reading from '{self.ead_source_repr}': {e}")
+            raise IOError(f"Error reading from {self.ead_source_repr}: {e}")
         except Exception as e:
             # Catch-all for other unexpected parsing issues
             raise RuntimeError(
-                f"Unexpected error parsing EAD input '{self.ead_source_repr}': {str(e)}"
+                f"Unexpected error parsing EAD input {self.ead_source_repr}: {str(e)}"
             )
 
     def create_item_chunks(self):
@@ -364,8 +383,8 @@ class EAD:
             Path to the output JSON file
         """
         import json
-        with open(output_file, 'w') as f:
-            json.dump(chunks, f, indent=2)
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(chunks, f, indent=2, ensure_ascii=False)
 
     def create_and_save_chunks(self, output_file):
         """
@@ -502,6 +521,33 @@ class EAD:
         self.save_csv_data(csv_data, output_file)
         return csv_data
 
+    def _strip_unresolved_entities(self, tree):
+        """
+        Remove entity references left unexpanded by resolve_entities=False,
+        so the literal '&name;' text doesn't leak into extracted text. Their
+        content (typically institutional boilerplate pulled in via external
+        entities) is omitted from output; a warning reports what was dropped.
+        """
+        names = set()
+        for node in list(tree.getroot().iter(etree.Entity)):
+            names.add(node.name)
+            parent = node.getparent()
+            tail = node.tail or ""
+            prev = node.getprevious()
+            if prev is not None:
+                prev.tail = (prev.tail or "") + tail
+            else:
+                parent.text = (parent.text or "") + tail
+            parent.remove(node)
+        if names:
+            warnings.warn(
+                f"Unresolved entity reference(s) in {self.ead_source_repr}: "
+                f"{', '.join(sorted(names))}. eadpy does not load external "
+                "entities; their text is omitted from parsed output.",
+                UserWarning,
+                stacklevel=2,
+            )
+
     def _remove_namespaces(self, tree):
         """
         Remove namespaces in-place from an lxml ElementTree.
@@ -511,16 +557,36 @@ class EAD:
                 elem.tag = elem.tag.split("}", 1)[1]
         etree.cleanup_namespaces(tree)
 
+    def _check_ead_version(self, root):
+        """
+        Verify the document is EAD 2002. EAD3 shares the <ead> root element
+        but replaces <eadheader> with <control>, and would otherwise parse
+        'successfully' into an empty collection.
+        """
+        if root.tag != "ead":
+            raise EadParseError(
+                f"Unexpected root element <{root.tag}>; expected <ead> (EAD 2002)."
+            )
+        if root.find("control") is not None and root.find("eadheader") is None:
+            raise EadParseError(
+                "This appears to be an EAD3 document (<control> instead of "
+                "<eadheader>); eadpy supports EAD 2002 only."
+            )
+
     def _generate_id(self, reference_id, parent_id=None):
         """
-        Generate a unique identifier if reference_id is None,
+        Generate an identifier if reference_id is None,
         otherwise prepend parent_id if present.
         """
         if reference_id:
             return f"{parent_id}_{reference_id}" if parent_id else reference_id
         else:
-            random_str = str(time.time())
-            md5_hash = hashlib.md5(random_str.encode("utf-8")).hexdigest()[:9]
+            # Deterministic per-parse fallback: hash a counter scoped to this
+            # instance so repeat parses of the same document yield stable ids.
+            self.counter += 1
+            md5_hash = hashlib.md5(
+                f"{parent_id}_{self.counter}".encode("utf-8")
+            ).hexdigest()[:9]
             return f"{parent_id}_{md5_hash}" if parent_id else md5_hash
 
     def _parse_collection(self, root):
@@ -528,33 +594,48 @@ class EAD:
         Parse the top-level <archdesc> as a 'collection'.
         """
         ead_id_node = root.xpath("//eadheader/eadid")
-        ead_id = ead_id_node[0].text.strip() if ead_id_node else None
+        ead_id = (ead_id_node[0].text or "").strip() or None if ead_id_node else None
 
         title = self._parse_title(root)
-        normalized_date = self._parse_normalized_date(root)
+        dates = self._parse_dates(root, "//archdesc/did/")
+        normalized_date = self._format_normalized_date(dates)
+        repository_nodes = root.xpath("//repository")
 
         collection = {
             "id": ead_id,
             "level": "collection",
             "title": title,
             "normalized_title": self._normalize_title(title, normalized_date),
-            "dates": self._parse_dates(root),
+            "dates": dates,
             "normalized_date": normalized_date,
-            "creators": self._parse_creators(root),
-            "extent": self._parse_extent(root),
-            "language": [x.strip() for x in root.xpath("//archdesc/did/langmaterial/text()")],
+            "creators": self._parse_creators(root, "//archdesc/did/"),
+            "extent": self._parse_extent(root, "//archdesc/did/"),
+            "language": self._parse_language(root),
             "physdesc": self._parse_physdesc(root),
-            "repository": self._extract_all_text(root.xpath("//repository")),
-            "unitid": self._safe_strip(root.xpath("//archdesc/did/unitid/text()")),
-            "notes": self._parse_notes(root),
-            "access_subjects": self._parse_access_subjects(root),
-            "geo_names": [x.strip() for x in root.xpath("//archdesc/controlaccess/geogname/text()")],
+            "repository": self._joined_text(repository_nodes[0]) if repository_nodes else None,
+            "unitid": self._first_text(root.xpath("//archdesc/did/unitid")),
+            "notes": self._parse_notes(root, "//archdesc/"),
+            "access_subjects": self._parse_access_subjects(root, "//archdesc/"),
+            "geo_names": self._texts(root.xpath("//archdesc/controlaccess/geogname")),
             "digital_objects": self._parse_digital_objects(
                 root.xpath("//archdesc/did/dao | //archdesc/dao")
             ),
+            # Deliberately document-wide: a <dao> anywhere, including inside
+            # components, means the collection has online content.
             "has_online_content": len(root.xpath("//dao")) > 0
         }
         return collection
+
+    def _parse_language(self, root):
+        """
+        Languages of the material. Standard EAD 2002 wraps each language in a
+        <language> child of <langmaterial>; fall back to the langmaterial
+        prose when no <language> children exist.
+        """
+        language_nodes = root.xpath("//archdesc/did/langmaterial//language")
+        if language_nodes:
+            return self._texts(language_nodes)
+        return self._texts(root.xpath("//archdesc/did/langmaterial"))
 
     def _parse_components(self, component_nodes, parent_id):
         """
@@ -569,8 +650,9 @@ class EAD:
                 ref_id = hashlib.md5(fallback.encode("utf-8")).hexdigest()[:9]
 
             component_id = self._generate_id(ref_id, parent_id)
-            title = self._safe_strip(node.xpath("./did/unittitle/text()"))
-            normalized_date = self._parse_normalized_component_date(node)
+            title = self._first_text(node.xpath("./did/unittitle"))
+            dates = self._parse_dates(node, "./did/")
+            normalized_date = self._format_normalized_date(dates)
 
             component = {
                 "id": component_id,
@@ -579,17 +661,19 @@ class EAD:
                 "level": self._parse_level(node),
                 "title": title,
                 "normalized_title": self._normalize_title(title, normalized_date),
-                "dates": self._parse_component_dates(node),
+                "dates": dates,
                 "normalized_date": normalized_date,
-                "unitid": self._safe_strip(node.xpath("./did/unitid/text()")),
-                "creators": self._parse_component_creators(node),
-                "extent": self._parse_component_extent(node),
-                "notes": self._parse_component_notes(node),
+                "unitid": self._first_text(node.xpath("./did/unitid")),
+                "creators": self._parse_creators(node, "./did/"),
+                "extent": self._parse_extent(node, "./did/"),
+                "notes": self._parse_notes(node, "./"),
                 "containers": self._parse_containers(node),
-                "access_subjects": self._parse_component_access_subjects(node),
+                "access_subjects": self._parse_access_subjects(node, "./"),
                 "digital_objects": self._parse_digital_objects(
                     node.xpath("./dao | ./did/dao")
                 ),
+                # Descendant daos deliberately count, so ancestors of
+                # digitized material are also flagged as online content.
                 "has_online_content": len(node.xpath(".//dao")) > 0,
             }
 
@@ -614,113 +698,57 @@ class EAD:
         """
         Extract the collection-level title (unittitle).
         """
-        title_node = root.xpath("//archdesc/did/unittitle/text()")
-        return title_node[0].strip() if title_node else None
+        return self._first_text(root.xpath("//archdesc/did/unittitle"))
 
-    def _parse_dates(self, root):
+    def _parse_dates(self, node, prefix):
         """
-        Return a dict of date types: inclusive, bulk, and other at the collection level.
+        Return a dict of unitdate display values grouped by type, plus any
+        machine-readable @normal attribute values.
         """
         return {
-            "inclusive": [x.strip() for x in root.xpath('//archdesc/did/unitdate[@type="inclusive"]/text()')],
-            "bulk": [x.strip() for x in root.xpath('//archdesc/did/unitdate[@type="bulk"]/text()')],
-            "other": [x.strip() for x in root.xpath('//archdesc/did/unitdate[not(@type)]/text()')]
+            "inclusive": self._texts(node.xpath(f'{prefix}unitdate[@type="inclusive"]')),
+            "bulk": self._texts(node.xpath(f'{prefix}unitdate[@type="bulk"]')),
+            "other": self._texts(node.xpath(f'{prefix}unitdate[not(@type)]')),
+            "normal": [str(v) for v in node.xpath(f'{prefix}unitdate/@normal')]
         }
 
-    def _parse_component_dates(self, node):
+    def _format_normalized_date(self, dates):
         """
-        Return a dict of date types: inclusive, bulk, and other for a component.
+        Concatenate inclusive, bulk, and other dates into a single display string.
         """
-        return {
-            "inclusive": [x.strip() for x in node.xpath('./did/unitdate[@type="inclusive"]/text()')],
-            "bulk": [x.strip() for x in node.xpath('./did/unitdate[@type="bulk"]/text()')],
-            "other": [x.strip() for x in node.xpath('./did/unitdate[not(@type)]/text()')]
-        }
-
-    def _parse_normalized_date(self, root):
-        """
-        Concatenate inclusive, bulk, and other collection-level dates into a single string.
-        """
-        inclusive = [x.strip() for x in root.xpath('//archdesc/did/unitdate[@type="inclusive"]/text()')]
-        bulk = [x.strip() for x in root.xpath('//archdesc/did/unitdate[@type="bulk"]/text()')]
-        other = [x.strip() for x in root.xpath('//archdesc/did/unitdate[not(@type)]/text()')]
-        
-        normalized = []
-        if inclusive:
-            normalized.extend(inclusive)
-        if bulk:
-            normalized.append(f"bulk {', '.join(bulk)}")
-        if other:
-            normalized.extend(other)
-        
+        normalized = list(dates["inclusive"])
+        if dates["bulk"]:
+            normalized.append(f"bulk {', '.join(dates['bulk'])}")
+        normalized.extend(dates["other"])
         return ", ".join(normalized) if normalized else None
 
-    def _parse_normalized_component_date(self, node):
+    def _parse_extent(self, node, prefix):
         """
-        Concatenate inclusive, bulk, and other component-level dates into a single string.
+        Collect <extent> under a <physdesc>.
         """
-        inclusive = [x.strip() for x in node.xpath('./did/unitdate[@type="inclusive"]/text()')]
-        bulk = [x.strip() for x in node.xpath('./did/unitdate[@type="bulk"]/text()')]
-        other = [x.strip() for x in node.xpath('./did/unitdate[not(@type)]/text()')]
-        
-        normalized = []
-        if inclusive:
-            normalized.extend(inclusive)
-        if bulk:
-            normalized.append(f"bulk {', '.join(bulk)}")
-        if other:
-            normalized.extend(other)
-        
-        return ", ".join(normalized) if normalized else None
-
-    def _parse_extent(self, root):
-        """
-        Collect <extent> under the collection-level <physdesc>.
-        """
-        return [x.strip() for x in root.xpath('//archdesc/did/physdesc/extent/text()')]
-
-    def _parse_component_extent(self, node):
-        """
-        Collect <extent> for a component-level <physdesc>.
-        """
-        return [x.strip() for x in node.xpath('./did/physdesc/extent/text()')]
+        return self._texts(node.xpath(f'{prefix}physdesc/extent'))
 
     def _parse_physdesc(self, root):
         """
         Extract textual content from <physdesc> for the collection-level.
         """
         entries = []
-        physdesc_nodes = root.xpath('//archdesc/did/physdesc')
-        for pnode in physdesc_nodes:
-            text_parts = []
-            for child in pnode.itertext():
-                if child.strip():
-                    text_parts.append(child.strip())
-            joined_text = " ".join(text_parts).strip()
+        for pnode in root.xpath('//archdesc/did/physdesc'):
+            joined_text = self._joined_text(pnode)
             if joined_text:
                 entries.append(joined_text)
         return entries
 
-    def _parse_creators(self, root):
+    def _parse_creators(self, node, prefix):
         """
-        Collect <origination> name elements for the collection.
-        """
-        creators = []
-        for name_el in self.NAME_ELEMENTS:
-            path = f"//archdesc/did/origination/{name_el}/text()"
-            for text_node in root.xpath(path):
-                creators.append({"type": name_el, "name": text_node.strip()})
-        return creators
-
-    def _parse_component_creators(self, node):
-        """
-        Collect <origination> name elements for a component.
+        Collect <origination> name elements.
         """
         creators = []
         for name_el in self.NAME_ELEMENTS:
-            path = f"./did/origination/{name_el}/text()"
-            for text_node in node.xpath(path):
-                creators.append({"type": name_el, "name": text_node.strip()})
+            for el in node.xpath(f"{prefix}origination/{name_el}"):
+                name = self._collapse_text(el)
+                if name:
+                    creators.append({"type": name_el, "name": name})
         return creators
 
     def _parse_level(self, node):
@@ -742,87 +770,77 @@ class EAD:
         for c in container_nodes:
             containers.append({
                 "type": c.get("type"),
-                "value": c.text.strip() if c.text else None
+                "value": self._collapse_text(c)
             })
         return containers
 
-    def _parse_notes(self, root):
+    def _parse_notes(self, node, prefix):
         """
-        Parse <archdesc> notes. Some are directly under <archdesc>, 
-        some are under <archdesc>/did.
-        """
-        notes = {}
-        for field in self.SEARCHABLE_NOTES_FIELDS:
-            content_nodes = root.xpath(f"//archdesc/{field}")
-            if content_nodes:
-                field_values = []
-                for node in content_nodes:
-                    heading = "".join(node.xpath('./head/text()')).strip()
-                    content_texts = []
-                    for child in node.xpath('./*[local-name()!="head"]'):
-                        content_texts.append("".join(child.itertext()).strip())
-                    field_values.append({
-                        "heading": heading,
-                        "content": content_texts
-                    })
-                notes[field] = field_values
-
-        for field in self.DID_SEARCHABLE_NOTES_FIELDS:
-            content_nodes = root.xpath(f"//archdesc/did/{field}/text()")
-            if content_nodes:
-                notes[field] = [c.strip() for c in content_nodes if c.strip()]
-        return notes
-
-    def _parse_component_notes(self, node):
-        """
-        Parse notes for a particular component node (e.g. <cXX>).
+        Parse note fields. Some are direct children of <archdesc>/<cXX>,
+        some live under the <did>.
         """
         notes = {}
         for field in self.SEARCHABLE_NOTES_FIELDS:
-            content_nodes = node.xpath(f"./{field}")
+            content_nodes = node.xpath(f"{prefix}{field}")
             if content_nodes:
                 field_values = []
                 for cnode in content_nodes:
-                    heading = "".join(cnode.xpath('./head/text()')).strip()
-                    content_texts = []
-                    for child in cnode.xpath('./*[local-name()!="head"]'):
-                        content_texts.append("".join(child.itertext()).strip())
+                    head_nodes = cnode.xpath('./head')
+                    heading = (self._collapse_text(head_nodes[0]) or "") if head_nodes else ""
                     field_values.append({
                         "heading": heading,
-                        "content": content_texts
+                        "content": self._note_content(cnode)
                     })
                 notes[field] = field_values
 
         for field in self.DID_SEARCHABLE_NOTES_FIELDS:
-            content_nodes = node.xpath(f"./did/{field}/text()")
-            if content_nodes:
-                notes[field] = [c.strip() for c in content_nodes if c.strip()]
+            values = self._texts(node.xpath(f"{prefix}did/{field}"))
+            if values:
+                notes[field] = values
         return notes
 
-    def _parse_access_subjects(self, root):
+    def _note_content(self, node):
         """
-        Collect subject, function, occupation, genreform under <controlaccess> at collection-level.
+        Text blocks of a note element: direct text plus one entry per child
+        element (excluding <head>), so block structure survives as separate
+        list entries.
         """
-        subjects = []
-        control_access_nodes = root.xpath("//archdesc/controlaccess")
-        for canode in control_access_nodes:
-            for selector in ["subject", "function", "occupation", "genreform"]:
-                for text_node in canode.xpath(f".//{selector}/text()"):
-                    if text_node.strip():
-                        subjects.append(text_node.strip())
-        return subjects
+        texts = []
 
-    def _parse_component_access_subjects(self, node):
+        def add_raw(raw):
+            if raw and raw.strip():
+                texts.append(re.sub(r"\s+", " ", raw).strip())
+
+        add_raw(node.text)
+        for child in node:
+            if child.tag != "head":
+                block = self._block_text(child)
+                if block:
+                    texts.append(block)
+            add_raw(child.tail)
+        return texts
+
+    def _block_text(self, node):
         """
-        Collect subject, function, occupation, genreform under <controlaccess> at component-level.
+        Text of a block element inside a note. Prose blocks keep their inline
+        spacing; element-only blocks (chronlist, list, table, ...) get their
+        pieces space-separated so adjacent values don't run together.
+        """
+        has_own_text = bool(node.text and node.text.strip()) or any(
+            child.tail and child.tail.strip() for child in node
+        )
+        if len(node) == 0 or has_own_text:
+            return self._collapse_text(node)
+        return self._joined_text(node)
+
+    def _parse_access_subjects(self, node, prefix):
+        """
+        Collect subject, function, occupation, genreform under <controlaccess>.
         """
         subjects = []
-        control_access_nodes = node.xpath("./controlaccess")
-        for canode in control_access_nodes:
+        for canode in node.xpath(f"{prefix}controlaccess"):
             for selector in ["subject", "function", "occupation", "genreform"]:
-                for text_node in canode.xpath(f".//{selector}/text()"):
-                    if text_node.strip():
-                        subjects.append(text_node.strip())
+                subjects.extend(self._texts(canode.xpath(f".//{selector}")))
         return subjects
 
     def _parse_digital_objects(self, dao_nodes):
@@ -833,8 +851,7 @@ class EAD:
         for dao in dao_nodes:
             label = dao.get("title")
             if not label:
-                label_candidate = dao.xpath("daodesc/p/text()")
-                label = label_candidate[0].strip() if label_candidate else None
+                label = self._first_text(dao.xpath("./daodesc/p"))
 
             href = dao.get("href")
             if not href:
@@ -845,22 +862,36 @@ class EAD:
 
         return digital_objects
 
-    def _safe_strip(self, nodes):
+    def _collapse_text(self, node):
         """
-        Return the first node as stripped text if present, else None.
+        Full text of an element with whitespace runs collapsed. Suitable for
+        prose and mixed content, where inline markup (persname, title, emph,
+        ...) interrupts the text but natural spacing surrounds it.
         """
-        if not nodes:
+        if node is None:
             return None
-        if isinstance(nodes, list):
-            return nodes[0].strip() if nodes[0] else None
-        return nodes.strip() if nodes else None
+        text = re.sub(r"\s+", " ", "".join(node.itertext())).strip()
+        return text or None
 
-    def _extract_all_text(self, nodes):
+    def _joined_text(self, node):
         """
-        Extract all text content from an element including nested elements.
+        Text of an element joined piece-by-piece with spaces. Suitable for
+        element-only content (e.g. physdesc, repository) whose children are
+        discrete values that would otherwise run together.
         """
-        if not nodes:
+        if node is None:
             return None
+        parts = [p.strip() for p in node.itertext() if p.strip()]
+        return " ".join(parts) or None
 
-        node = nodes[0] if isinstance(nodes, list) else nodes
-        return " ".join(node.itertext()).strip() if node is not None else None
+    def _first_text(self, nodes):
+        """
+        Collapsed text of the first element in an XPath result, else None.
+        """
+        return self._collapse_text(nodes[0]) if nodes else None
+
+    def _texts(self, nodes):
+        """
+        Collapsed text of each element in an XPath result, empties dropped.
+        """
+        return [t for t in (self._collapse_text(n) for n in nodes) if t]

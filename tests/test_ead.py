@@ -3,6 +3,7 @@ import os
 import json
 import csv
 import tempfile
+from pathlib import Path
 import pytest
 from lxml import etree
 from eadpy.ead import EAD
@@ -10,7 +11,7 @@ import eadpy  # Import the package for testing package-level functions
 
 @pytest.fixture
 def sample_xml_path():
-    return "tests/sample.xml"
+    return str(Path(__file__).parent / "sample.xml")
 
 @pytest.fixture
 def ead_instance(sample_xml_path):
@@ -171,44 +172,43 @@ def test_normalize_title(ead_instance):
 def test_parse_collection(ead_instance):
     """Test that collection metadata is parsed correctly"""
     collection = ead_instance.data
-    assert "id" in collection
-    assert "title" in collection
-    assert "level" in collection
+    assert collection["id"] == "sample.xml"
+    assert collection["title"] == "Sample Collection"
     assert collection["level"] == "collection"
-    assert "normalized_title" in collection
-    assert "dates" in collection
+    assert collection["unitid"] == "SAMPLE-001"
+    assert collection["extent"] == ["4 series, 42 items"]
+    assert collection["normalized_date"] == "2023"
+    assert collection["normalized_title"] == "Sample Collection, 2023"
     assert "creators" in collection
     assert "notes" in collection
 
 def test_parse_components(ead_instance):
     """Test that components are parsed correctly"""
-    # Test that components exist and have the right structure
-    assert "components" in ead_instance.data
     assert isinstance(ead_instance.data["components"], list)
-    
-    # Assuming sample.xml has at least one component
-    if len(ead_instance.data["components"]) > 0:
-        component = ead_instance.data["components"][0]
-        assert "id" in component
-        assert "level" in component
-        assert "title" in component
-        assert "parent_id" in component
-        assert component["parent_id"] == ead_instance.data["id"]
+    assert len(ead_instance.data["components"]) == 4
+
+    component = ead_instance.data["components"][0]
+    assert component["title"] == "Series 1: Personal Papers"
+    assert component["level"] == "file"
+    assert "id" in component
+    assert component["parent_id"] == ead_instance.data["id"]
 
 def test_create_item_chunks(ead_instance):
     """Test creation of item chunks"""
     chunks = ead_instance.create_item_chunks()
     assert isinstance(chunks, list)
-    
-    # Test that chunks have the right structure
-    if len(chunks) > 0:
-        chunk = chunks[0]
-        assert "text" in chunk
-        assert "metadata" in chunk
-        assert "id" in chunk["metadata"]
-        assert "title" in chunk["metadata"]
-        assert "path" in chunk["metadata"]
-        assert "level" in chunk["metadata"]
+    # sample.xml contains 17 item/leaf components
+    assert len(chunks) == 17
+
+    chunk = chunks[0]
+    assert "text" in chunk
+    assert "metadata" in chunk
+    assert chunk["metadata"]["title"] == "Teenage performances"
+    assert chunk["metadata"]["level"] == "item"
+    assert chunk["metadata"]["path"].startswith(
+        "Sample Collection > Series 1: Personal Papers"
+    )
+    assert "id" in chunk["metadata"]
 
 def test_save_chunks_to_json(ead_instance):
     """Test saving chunks to a JSON file"""
@@ -282,7 +282,7 @@ def test_nonexistent_file():
 def test_directory_as_file():
     """Test error handling when a directory is provided instead of a file"""
     with pytest.raises(IsADirectoryError) as excinfo:
-        EAD.from_path("tests")  # Assuming 'tests' directory exists
+        EAD.from_path(str(Path(__file__).parent))
     assert "is a directory, not a file" in str(excinfo.value)
 
 def test_file_permission_error(monkeypatch):
@@ -440,18 +440,20 @@ def test_create_csv_data(ead_instance):
     """Test creation of CSV data"""
     csv_data = ead_instance.create_csv_data()
     assert isinstance(csv_data, list)
-    
-    # Test that CSV data has the right structure
-    if len(csv_data) > 0:
-        row = csv_data[0]
-        assert "id" in row
-        assert "title" in row
-        assert "level" in row
-        assert "path" in row
-        assert "depth" in row
-        assert "date" in row
-        assert "has_online_content" in row
-        assert isinstance(row["depth"], int)
+    # collection row + 28 components (4 c01 + 13 c02 + 9 c03 + 2 c04)
+    assert len(csv_data) == 29
+
+    row = csv_data[0]
+    assert row["level"] == "collection"
+    assert row["title"] == "Sample Collection"
+    assert row["path"] == "Sample Collection"
+    assert row["depth"] == 0
+    assert row["has_online_content"] == "No"
+    assert "date" in row
+
+    first_component = csv_data[1]
+    assert first_component["title"] == "Series 1: Personal Papers"
+    assert first_component["depth"] == 1
 
 def test_save_csv_data(ead_instance):
     """Test saving CSV data to a file"""

@@ -6,6 +6,7 @@ import os
 import argparse
 import pathlib
 import glob
+import warnings
 from typing import List, Optional, Tuple
 from eadpy import from_path, __version__
 
@@ -53,8 +54,14 @@ def process_file(ead_file: str, output_file: Optional[str] = None,
         if verbose:
             print(f"Parsing EAD file: {ead_file}")
         
-        ead = from_path(ead_file)
-        
+        # Capture library warnings (e.g. unresolved external entities) and
+        # present them as plain messages instead of Python warning tracebacks.
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            ead = from_path(ead_file)
+        for warning in caught:
+            print(f"Warning: {warning.message}", file=sys.stderr)
+
         if format_type == 'csv':
             ead.create_and_save_csv(output_file)
         else:

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from eadpy import from_path
 
@@ -7,21 +9,24 @@ sample.xml summary:
     - 13 second-level c02 elements
     - 9 third-level c03 elements
     - 2 fourth-level c04 elements
-    - A total of 42 individual items (combining explicit items and grouped items)
+    - 17 components representing individual items (leaf components plus
+      components explicitly marked level="item"). The collection-level extent
+      says "42 items" because some item-level components group multiple
+      physical items (e.g. "5 photographs").
 """
 
 @pytest.fixture(scope="module")
 def ead_instance():
     """
     Creates and returns an EAD instance from the sample XML file.
-    
+
     Returns
     -------
     EAD
         An instance of the EAD class initialized with test data.
     """
     # Use the package-level from_path function instead of class method
-    return from_path("tests/sample.xml")
+    return from_path(str(Path(__file__).parent / "sample.xml"))
 
 def test_top_level_files_count(ead_instance):
     # Count top-level components
@@ -84,21 +89,12 @@ def test_item_level_components(ead_instance):
 
 def test_total_individual_items(ead_instance):
     """
-    Test the total count of individual items in the sample document.
-    
-    This test counts individual archival items by:
-    1. Counting components explicitly marked with level="item"
-    2. Counting leaf nodes that don't have level="item" 
-       (components without children are considered individual items)
-    
-    The sample.xml file contains 42 total individual items according to
-    the collection-level extent tag, but our parser only identifies 17
-    individual items. 
-    
-    Note: There is a discrepancy between the expected 42 items mentioned in
-    the extent tag and the actual 17 individual components in the hierarchy.
-    The difference likely represents grouped items (e.g., "5 photographs"),
-    but these are not currently included in the component counts.
+    Test the total count of individual item components in the sample document.
+
+    Counts components explicitly marked level="item" plus leaf components
+    without that level. The result (17) is intentionally lower than the "42
+    items" in the collection-level extent text, because some item-level
+    components group multiple physical items (e.g. "5 photographs").
     """
     leaf_count = 0
     item_count = 0

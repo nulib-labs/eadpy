@@ -1,18 +1,17 @@
 import os
 import sys
 import glob
+import shutil
 import tempfile
-import unittest.mock as mock
 import pytest
 from pathlib import Path
 
 from eadpy.cli import process_file, process_directory, main
-# Import the top-level functions from eadpy to mock them in tests
-from eadpy import from_path, EAD
+from eadpy import __version__
 
 @pytest.fixture
 def sample_xml_path():
-    return "tests/sample.xml"
+    return str(Path(__file__).parent / "sample.xml")
 
 @pytest.fixture
 def empty_xml():
@@ -142,9 +141,26 @@ class TestProcessFile:
             f.write("<invalid>")
         
         success, result = process_file(invalid_file, None, "json", False)
-        
+
         assert success is False
         assert "Invalid XML" in result or "Premature end of data" in result
+
+    def test_process_file_entity_warning(self, temp_dir, capsys):
+        """Unresolved external entities succeed with a plain warning on stderr"""
+        entity_file = os.path.join(temp_dir, "entities.xml")
+        with open(entity_file, "w") as f:
+            f.write("""<!DOCTYPE ead [<!ENTITY su_name SYSTEM "su_name.txt">]>
+            <ead><eadheader><eadid>t</eadid></eadheader>
+            <archdesc level="collection"><did>
+                <unittitle>Papers of &su_name;</unittitle>
+            </did><dsc/></archdesc></ead>""")
+
+        success, result = process_file(entity_file, None, "json", False)
+
+        assert success is True
+        captured = capsys.readouterr()
+        assert "Warning: Unresolved entity reference(s)" in captured.err
+        assert "su_name" in captured.err
 
 class TestProcessDirectory:
     """Tests for the process_directory function"""
@@ -292,168 +308,77 @@ class TestProcessDirectory:
         assert "No XML files found" in errors[0]
 
 class TestMainCLI:
-    """Tests for the main CLI function"""
-    
-    @pytest.fixture
-    def mock_argparse(self):
-        """Mock argparse to test the main function"""
-        with mock.patch("argparse.ArgumentParser") as mock_parser:
-            # Create mock for the parser
-            parser = mock.MagicMock()
-            mock_parser.return_value = parser
-            
-            # Create mock for subparsers
-            subparsers = mock.MagicMock()
-            parser.add_subparsers.return_value = subparsers
-            
-            # Create mocks for subcommand parsers
-            file_parser = mock.MagicMock()
-            dir_parser = mock.MagicMock()
-            subparsers.add_parser.side_effect = [file_parser, dir_parser]
-            
-            yield {
-                'parser': parser,
-                'subparsers': subparsers,
-                'file_parser': file_parser,
-                'dir_parser': dir_parser
-            }
-    
-    @mock.patch("eadpy.cli.process_file")
-    def test_main_file_command(self, mock_process_file, mock_argparse):
+    """Tests for the main CLI function, run against the real argument parser"""
+
+    def test_main_file_command(self, sample_xml_path, temp_dir, monkeypatch, capsys):
         """Test the main function with file command"""
-        # Setup mock
-        mock_process_file.return_value = (True, "output.json")
-        
-        # Setup args
-        args = mock.MagicMock()
-        args.command = "file"
-        args.input = "test.xml"
-        args.output = "output.json"
-        args.format = "json"
-        args.verbose = False
-        mock_argparse['parser'].parse_args.return_value = args
-        
-        # Call main function
-        with mock.patch.object(sys, 'argv', ['eadpy', 'file', 'test.xml']):
-            with mock.patch('sys.exit') as mock_exit:
-                main()
-                
-                # Assert process_file was called with correct args
-                mock_process_file.assert_called_once_with(
-                    "test.xml", "output.json", "json", False
-                )
-                
-                # Assert we didn't exit with error
-                mock_exit.assert_not_called()
-                
-    @mock.patch("eadpy.cli.process_file")
-    def test_main_file_command_error(self, mock_process_file, mock_argparse):
+        output_file = os.path.join(temp_dir, "output.json")
+        monkeypatch.setattr(
+            sys, "argv",
+            ["eadpy", "file", sample_xml_path, "-o", output_file, "-f", "json"]
+        )
+
+        main()
+
+        assert os.path.exists(output_file)
+        assert "Successfully processed" in capsys.readouterr().out
+
+    def test_main_file_command_error(self, monkeypatch, capsys):
         """Test the main function with file command that errors"""
-        # Setup mock to return an error
-        mock_process_file.return_value = (False, "Error message")
-        
-        # Setup args
-        args = mock.MagicMock()
-        args.command = "file"
-        args.input = "nonexistent.xml"
-        args.output = None
-        args.format = None
-        args.verbose = False
-        mock_argparse['parser'].parse_args.return_value = args
-        
-        # Call main function
-        with mock.patch.object(sys, 'argv', ['eadpy', 'file', 'nonexistent.xml']):
-            with mock.patch('sys.exit') as mock_exit:
-                with mock.patch('builtins.print') as mock_print:
-                    main()
-                    
-                    # Assert process_file was called
-                    mock_process_file.assert_called_once()
-                    
-                    # Assert we exited with error code 1
-                    mock_exit.assert_called_once_with(1)
-                    
-                    # Assert error was printed
-                    mock_print.assert_any_call("Error: Error message")
-                    
-    @mock.patch("eadpy.cli.process_directory")
-    def test_main_dir_command(self, mock_process_directory, mock_argparse):
+        monkeypatch.setattr(sys, "argv", ["eadpy", "file", "nonexistent.xml"])
+
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+
+        assert excinfo.value.code == 1
+        assert "Error:" in capsys.readouterr().out
+
+    def test_main_dir_command(self, sample_xml_path, temp_dir, monkeypatch, capsys):
         """Test the main function with dir command"""
-        # Setup mock
-        mock_process_directory.return_value = (3, 0, [])
-        
-        # Setup args
-        args = mock.MagicMock()
-        args.command = "dir"
-        args.input_dir = "test_dir"
-        args.output_dir = "output_dir"
-        args.format = "json"
-        args.recursive = True
-        args.verbose = False
-        mock_argparse['parser'].parse_args.return_value = args
-        
-        # Call main function
-        with mock.patch.object(sys, 'argv', ['eadpy', 'dir', 'test_dir']):
-            with mock.patch('sys.exit') as mock_exit:
-                main()
-                
-                # Assert process_directory was called with correct args
-                mock_process_directory.assert_called_once_with(
-                    "test_dir", "output_dir", "json", True, False
-                )
-                
-                # Assert we didn't exit with error
-                mock_exit.assert_not_called()
-                
-    @mock.patch("eadpy.cli.process_directory")
-    def test_main_dir_command_with_failures(self, mock_process_directory, mock_argparse):
+        shutil.copy(sample_xml_path, os.path.join(temp_dir, "finding_aid.xml"))
+        output_dir = os.path.join(temp_dir, "output")
+        monkeypatch.setattr(
+            sys, "argv",
+            ["eadpy", "dir", temp_dir, "-o", output_dir, "-f", "csv", "-r"]
+        )
+
+        main()
+
+        assert glob.glob(os.path.join(output_dir, "*.csv"))
+        out = capsys.readouterr().out
+        assert "Successfully processed: 1" in out
+        assert "Failed to process: 0" in out
+
+    def test_main_dir_command_with_failures(self, temp_dir, monkeypatch, capsys):
         """Test the main function with dir command that has failures"""
-        # Setup mock with failures
-        mock_process_directory.return_value = (2, 1, ["Error with file1.xml"])
-        
-        # Setup args
-        args = mock.MagicMock()
-        args.command = "dir"
-        args.input_dir = "test_dir"
-        args.output_dir = None
-        args.format = "json"
-        args.recursive = False
-        args.verbose = True
-        mock_argparse['parser'].parse_args.return_value = args
-        
-        # Call main function
-        with mock.patch.object(sys, 'argv', ['eadpy', 'dir', 'test_dir']):
-            with mock.patch('sys.exit') as mock_exit:
-                with mock.patch('builtins.print') as mock_print:
-                    main()
-                    
-                    # Assert process_directory was called
-                    mock_process_directory.assert_called_once()
-                    
-                    # Assert we exited with error code 1
-                    mock_exit.assert_called_once_with(1)
-                    
-                    # Assert summary was printed
-                    mock_print.assert_any_call("Processed 3 files:")
-                    mock_print.assert_any_call("  - Successfully processed: 2")
-                    mock_print.assert_any_call("  - Failed to process: 1")
-                    
-                    # Assert errors were printed in verbose mode
-                    mock_print.assert_any_call("\nErrors:")
-                    mock_print.assert_any_call("  - Error with file1.xml")
-                    
-    def test_main_no_command(self, mock_argparse):
+        with open(os.path.join(temp_dir, "bad.xml"), "w") as f:
+            f.write("<invalid>")
+        monkeypatch.setattr(sys, "argv", ["eadpy", "dir", temp_dir, "-v"])
+
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "Failed to process: 1" in out
+        assert "Errors:" in out
+
+    def test_main_no_command(self, monkeypatch, capsys):
         """Test the main function with no command"""
-        # Setup args with no command
-        args = mock.MagicMock()
-        args.command = None
-        mock_argparse['parser'].parse_args.return_value = args
-        
-        # Call main function
-        with mock.patch.object(sys, 'argv', ['eadpy']):
-            with mock.patch('sys.exit') as mock_exit:
-                main()
-                
-                # Assert help was shown and we exited
-                mock_argparse['parser'].print_help.assert_called_once()
-                mock_exit.assert_called_once_with(1)
+        monkeypatch.setattr(sys, "argv", ["eadpy"])
+
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+
+        assert excinfo.value.code == 1
+        assert "usage" in capsys.readouterr().out.lower()
+
+    def test_main_version(self, monkeypatch, capsys):
+        """Test the --version flag"""
+        monkeypatch.setattr(sys, "argv", ["eadpy", "--version"])
+
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+
+        assert excinfo.value.code == 0
+        assert __version__ in capsys.readouterr().out
